@@ -1,0 +1,10 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "Boilerplate Go Echo API Service",
+        "title": "Boilerplate Go Echo API Service",
+        "contact": {},
+        "version": "1.0"
+    },
+    "paths": {}
+}

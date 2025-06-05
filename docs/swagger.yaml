@@ -1,0 +1,7 @@
+info:
+  contact: {}
+  description: Boilerplate Go Echo API Service
+  title: Boilerplate Go Echo API Service
+  version: "1.0"
+paths: {}
+swagger: "2.0"

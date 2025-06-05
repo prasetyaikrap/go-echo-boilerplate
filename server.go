@@ -5,14 +5,19 @@ import (
 	"go-serviceboilerplate/applications/usecases"
 	"go-serviceboilerplate/commons/databases/postgres"
 	"go-serviceboilerplate/commons/utils"
+	_ "go-serviceboilerplate/docs"
 	"go-serviceboilerplate/infrastrucutres/repositories"
 	"go-serviceboilerplate/interfaces/http/api/system"
 	"log"
 
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
+	echoSwagger "github.com/swaggo/echo-swagger"
 )
 
+// @title Boilerplate Go Echo API Service
+// @version 1.0
+// @description Boilerplate Go Echo API Service
 func main() {
 	err := godotenv.Load()
 	if err != nil {
@@ -35,6 +40,9 @@ func main() {
 
 	// Routes
 	systemHandler.RegisterRoute(e)
+
+	// Swagger
+	e.GET("/swagger/*", echoSwagger.WrapHandler)
 
 
 	servicePort := utils.GetEnv("PORT")
