@@ -3,9 +3,9 @@ package main
 import (
 	"fmt"
 	"go-serviceboilerplate/applications/usecases"
-	"go-serviceboilerplate/commons/databases/postgres"
 	"go-serviceboilerplate/commons/utils"
 	_ "go-serviceboilerplate/docs"
+	"go-serviceboilerplate/infrastrucutres/databases/postgres"
 	"go-serviceboilerplate/infrastrucutres/repositories"
 	"go-serviceboilerplate/interfaces/http/api/system"
 	"log"
