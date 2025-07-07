@@ -1,6 +1,8 @@
 package utils
 
 import (
+	"net/http"
+
 	"github.com/labstack/echo/v4"
 )
 
@@ -34,8 +36,32 @@ func SuccessResponse(c echo.Context, response SuccessResponseConfig) error {
 	return c.JSON(response.Code, response)
 }
 
-func ErrorResponse(c echo.Context, response ErrorResponseConfig) error {
-	return c.JSON(response.Code, response)
+func ErrorResponse(c echo.Context, err error) error {
+	errorResponse := ErrorResponseConfig{
+		Code: http.StatusInternalServerError,
+		Message: err.Error(),
+		Error: map[string]any{
+			"type": "INTERNALSERVER_ERROR",
+			"code": 500,
+			"data": nil,
+		},
+	}
+	exceptions, ok := err.(*Exceptions);
+	if !ok {
+		return c.JSON(http.StatusInternalServerError, errorResponse)
+	}
+
+	errorResponse = ErrorResponseConfig{
+		Code: exceptions.Code,
+		Message: exceptions.Error(),
+		Error: map[string]any{
+			"type": exceptions.Type,
+			"code": exceptions.Code,
+			"data": exceptions.ErrorObject,
+		},
+	}
+
+	return c.JSON(exceptions.Code, errorResponse)
 }
 
 func SuccessResponseWithMetadata(c echo.Context, response SuccessResponseWithMetadataConfig) error {
