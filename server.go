@@ -3,14 +3,14 @@ package main
 import (
 	"fmt"
 	"go-serviceboilerplate/applications/usecases"
-	"go-serviceboilerplate/commons/utils"
 	_ "go-serviceboilerplate/docs"
+	"go-serviceboilerplate/infrastrucutres/configurations"
 	"go-serviceboilerplate/infrastrucutres/databases/postgres"
 	"go-serviceboilerplate/infrastrucutres/repositories"
 	"go-serviceboilerplate/interfaces/http/api/system"
-	"log"
+	"go-serviceboilerplate/interfaces/http/middlewares"
+	"go-serviceboilerplate/interfaces/http/validator"
 
-	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
 	echoSwagger "github.com/swaggo/echo-swagger"
 )
@@ -19,18 +19,14 @@ import (
 // @version 1.0
 // @description Boilerplate Go Echo API Service
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatalf("Error loading .env file: %v", err)
-	}
+	// Configuration
+	configs := configurations.NewConfigurations()
 
 	// Initialize Postgres database connection
-	DB := postgres.InitPostgres()
-
-	e := echo.New()
+	postgres := postgres.NewPostgressInstance(configs)
 
 	// Repositories
-	systemRepositories := repositories.NewSystemRepositories(DB)
+	systemRepositories := repositories.NewSystemRepositories(postgres)
 
 	// Usecases
 	systemUsecase := usecases.NewSystemUsecase(systemRepositories)
@@ -38,13 +34,17 @@ func main() {
 	// Handlers
 	systemHandler := system.NewSystemHandler(systemUsecase)
 
+	// Middlewares & Misc
+	appMiddlewares := middlewares.NewAppMiddlewaresHandler()
+
 	// Routes
-	systemHandler.RegisterRoute(e)
+	e := echo.New()
+	e.Validator = validator.NewCustomValidator()
+
+	systemHandler.RegisterRoute(e, appMiddlewares)
 
 	// Swagger
 	e.GET("/swagger/*", echoSwagger.WrapHandler)
 
-
-	servicePort := utils.GetEnv("PORT")
-	e.Logger.Fatal(e.Start(fmt.Sprintf(":%s", servicePort)))
+	e.Logger.Fatal(e.Start(fmt.Sprintf(":%s", configs.Env.Application.Port)))
 }

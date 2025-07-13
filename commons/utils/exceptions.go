@@ -1,9 +1,5 @@
 package utils
 
-import (
-	"net/http"
-)
-
 type Exceptions struct {
 	Type 		string
 	Code		int
@@ -22,7 +18,7 @@ const (
 func NewClientError(err error) *Exceptions{
 	return &Exceptions{
 		Type: ClientError,
-		Code: http.StatusBadRequest,
+		Code: 400,
 		Err: err,
 		ErrorObject: nil,
 	}
@@ -31,7 +27,7 @@ func NewClientError(err error) *Exceptions{
 func NewAuthenticationError(err error) *Exceptions {
 	return &Exceptions{
 		Type: AuthenticationError,
-		Code: http.StatusUnauthorized,
+		Code: 401,
 		Err: err,
 		ErrorObject: nil,
 	}
@@ -40,7 +36,7 @@ func NewAuthenticationError(err error) *Exceptions {
 func NewAuthorizationError(err error) *Exceptions {
 	return &Exceptions{
 		Type: AuthorizationError,
-		Code: http.StatusForbidden,
+		Code: 403,
 		Err: err,
 		ErrorObject: nil,
 	}
@@ -49,7 +45,7 @@ func NewAuthorizationError(err error) *Exceptions {
 func NewNotFoundError(err error) *Exceptions {
 	return &Exceptions{
 		Type: NotFoundError,
-		Code: http.StatusNotFound,
+		Code: 404,
 		Err: err,
 		ErrorObject: nil,
 	}
@@ -58,7 +54,7 @@ func NewNotFoundError(err error) *Exceptions {
 func NewInvariantError(err error) *Exceptions {
 	return &Exceptions{
 		Type: InvariantError,
-		Code: http.StatusInternalServerError,
+		Code: 400,
 		Err: err,
 		ErrorObject: nil,
 	}
