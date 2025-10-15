@@ -1,4 +1,4 @@
-package postgres
+package maindb
 
 import (
 	"fmt"
@@ -12,26 +12,26 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-type PostgresInstance struct {
-	DB 			*gorm.DB
+func NewAuthPostgressInstance(configs *configurations.Configs) *gorm.DB {
+	db, err := Database(configs)
+	if err != nil {
+        log.Fatalf("Database initialization failed: %v", err)
+    }
+
+	AutoMigrate(db)
+	
+	return db
 }
 
-func NewPostgressInstance(configs *configurations.Configs) *PostgresInstance {
-	mainDB := InitDatabase(configs, false)
-
-	return &PostgresInstance{DB: mainDB}
-}
-
-func InitDatabase(configs *configurations.Configs, autoMigrate bool) (DB *gorm.DB) {
-	envConfigs := configs.Env	
+func Database(configs *configurations.Configs) (DB *gorm.DB, err error)  {	
 	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s TimeZone=%s",
-		envConfigs.DB.Host,
-		envConfigs.DB.User,
-		envConfigs.DB.Password,
-		envConfigs.DB.DBName,
-		envConfigs.DB.Port,
-		envConfigs.DB.SSLMode,
-		envConfigs.DB.TimeZone,
+		configs.Envs.DB.Host,
+		configs.Envs.DB.User,
+		configs.Envs.DB.Password,
+		configs.Envs.DB.DBName,
+		configs.Envs.DB.Port,
+		configs.Envs.DB.SSLMode,
+		configs.Envs.DB.TimeZone,
 	)
 
 	// Configure GORM logger for better visibility in development/production
@@ -40,6 +40,7 @@ func InitDatabase(configs *configurations.Configs, autoMigrate bool) (DB *gorm.D
 		logger.Config{
 			SlowThreshold:             time.Second,   // Slow SQL threshold
 			LogLevel:                  logger.Info,   // Log level: Silent, Error, Warn, Info
+			IgnoreRecordNotFoundError: true,          // Ignore ErrRecordNotFound error for logging
 			ParameterizedQueries:      true,          // Log parameterized queries
 			Colorful:                  true,          // Enable color for log output
 		},
@@ -49,15 +50,15 @@ func InitDatabase(configs *configurations.Configs, autoMigrate bool) (DB *gorm.D
 		Logger: newLogger,
 	}
 	
-	DB, err := gorm.Open(postgres.Open(dsn), gormConfig)
+	DB, err = gorm.Open(postgres.Open(dsn), gormConfig)
 	if err != nil {
-        log.Fatalf("failed to connect to database: %v", err)
-    }
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
+	}
 
 	sqlDB, err := DB.DB()
 	if err != nil {
-        log.Fatalf("failed to get underlying sql.DB: %v", err)
-    }
+		return nil, fmt.Errorf("failed to get underlying sql.DB: %w", err)
+	}
 
 	sqlDB.SetMaxIdleConns(10)                  // Maximum number of idle connections in the pool
 	sqlDB.SetMaxOpenConns(100)                 // Maximum number of open connections to the database
@@ -65,15 +66,11 @@ func InitDatabase(configs *configurations.Configs, autoMigrate bool) (DB *gorm.D
 
 	fmt.Println("Database Successfully Connected")
 
-	if(autoMigrate) {
-		AutoMigrate(DB)
-	}
-
-	return DB
+	return DB, nil
 }
 
-func AutoMigrate(db *gorm.DB, dst ...interface{}) {
-	err := db.AutoMigrate(dst)
+func AutoMigrate(db *gorm.DB) {
+	err := db.AutoMigrate()
 
 	if(err != nil) {
 		log.Fatalf("AutoMigrate failed: %v", err)

@@ -1,15 +1,15 @@
 package repositories
 
 import (
-	"go-serviceboilerplate/infrastrucutres/databases/postgres"
+	"gorm.io/gorm"
 )
 
 type SystemRepositories struct {
-	postgresDB *postgres.PostgresInstance
+	mainDB *gorm.DB
 }
 
-func NewSystemRepositories(postgresDB *postgres.PostgresInstance) *SystemRepositories {
-	return &SystemRepositories{postgresDB}
+func NewSystemRepositories(mainDB *gorm.DB) *SystemRepositories {
+	return &SystemRepositories{mainDB}
 }
 
 func (s *SystemRepositories) GetSystemInfo() map[string]string {

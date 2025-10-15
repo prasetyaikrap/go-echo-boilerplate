@@ -38,21 +38,36 @@ func SuccessResponse(c echo.Context, response SuccessResponseConfig) error {
 }
 
 func ErrorResponse(c echo.Context, err error) error {
-	errorResponse := ErrorResponseConfig{
-		Code: http.StatusInternalServerError,
-		Message: err.Error(),
-		Error: map[string]any{
-			"type": "INTERNALSERVER_ERROR",
-			"code": 500,
-			"data": nil,
-		},
+	// Handle Echo's built-in HTTPError (e.g. 404, 405, etc)
+	if he, ok := err.(*echo.HTTPError); ok {
+		errorResponse := ErrorResponseConfig{
+			Code:    he.Code,
+			Message: http.StatusText(he.Code),
+			Error: map[string]any{
+				"type": "HTTP_ERROR",
+				"code": he.Code,
+				"data": he.Message,
+			},
+		}
+		return c.JSON(he.Code, errorResponse)
 	}
+
+	// Handle custom application exceptions
 	exceptions, ok := err.(*utils.Exceptions);
 	if !ok {
+		errorResponse := ErrorResponseConfig{
+			Code: http.StatusInternalServerError,
+			Message: err.Error(),
+			Error: map[string]any{
+				"type": "INTERNALSERVER_ERROR",
+				"code": http.StatusInternalServerError,
+				"data": nil,
+			},
+		}
 		return c.JSON(http.StatusInternalServerError, errorResponse)
 	}
 
-	errorResponse = ErrorResponseConfig{
+	exceptionResponse := ErrorResponseConfig{
 		Code: exceptions.Code,
 		Message: exceptions.Error(),
 		Error: map[string]any{
@@ -62,9 +77,16 @@ func ErrorResponse(c echo.Context, err error) error {
 		},
 	}
 
-	return c.JSON(exceptions.Code, errorResponse)
+	return c.JSON(exceptions.Code, exceptionResponse)
 }
 
 func SuccessResponseWithMetadata(c echo.Context, response SuccessResponseWithMetadataConfig) error {
 	return c.JSON(response.Code, response)
+}
+
+func HttpErrorHandler(err error, c echo.Context) {
+	if c.Response().Committed { 
+		return 
+	}
+	ErrorResponse(c, err)
 }

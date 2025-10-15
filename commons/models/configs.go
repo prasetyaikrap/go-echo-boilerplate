@@ -1,13 +1,21 @@
 package models
 
-import "github.com/labstack/echo/v4/middleware"
+import (
+	"time"
+
+	"github.com/labstack/echo/v4/middleware"
+)
 
 type ApplicationConfig struct {
-	Port 				string
-	ClientID			string
-	SecretToken			string
-	JWTSecret			string
-	CORSConfig			middleware.CORSConfig
+	Port 					string
+	ClientID				string
+	AllowedCleintIDs 		[]string
+	SecretToken				string
+	JWTAccessSecret			string
+	JWTRefreshSecret		string
+	AccessTokenExpiration 	time.Duration
+	RefreshTokenExpiration 	time.Duration
+	CORSConfig				middleware.CORSConfig
 }
 
 type DBConfig struct {
@@ -22,5 +30,5 @@ type DBConfig struct {
 
 type ENVConfig struct {
 	Application 	ApplicationConfig
-	DB				DBConfig
+	DB			DBConfig
 }
