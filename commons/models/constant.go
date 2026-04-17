@@ -11,3 +11,24 @@ var (
 
 	ContextUserClaim = "user_claim"
 )
+
+const (
+	OpEqual               = "equal"
+	OpNotEqual			  = "not-equal"
+	OpIlike               = "ilike"
+	OpLike                = "like"
+	OpStartsWith          = "starts-with"
+	OpEndsWith            = "ends-with"
+	OpSliceIn             = "slice-in"
+	OpSliceNotIn          = "slice-not-in"
+	OpGreaterThan          = "greater-than"
+	OpGreaterThanOrEqualTo = "greater-than-or-equal-to"
+	OpLessThan            = "less-than"
+	OpLessThanOrEqualTo   = "less-than-or-equal-to"
+	OpBetween             = "between"
+	OpNotBetween          = "not-between"
+	OpIsNull			  = "is-null"
+	OpIsNotNull			  = "is-not-null"
+	OpBoolean			  = "boolean"
+	OpOr				  = "or"
+)
