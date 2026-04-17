@@ -3,7 +3,7 @@ package authentications
 import (
 	"go-serviceboilerplate/applications/usecases"
 	"go-serviceboilerplate/commons/models"
-	"go-serviceboilerplate/interfaces/utils"
+	"go-serviceboilerplate/commons/utils"
 
 	"github.com/labstack/echo/v4"
 )

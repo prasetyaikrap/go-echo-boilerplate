@@ -6,7 +6,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"go-serviceboilerplate/applications/usecases"
-	"go-serviceboilerplate/interfaces/utils"
+	"go-serviceboilerplate/commons/utils"
 )
 
 type SystemHandler struct {

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"go-serviceboilerplate/commons/models"
 	"go-serviceboilerplate/commons/utils"
-	"go-serviceboilerplate/infrastrucutres/configurations"
+	"go-serviceboilerplate/infrastructures/configurations"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"

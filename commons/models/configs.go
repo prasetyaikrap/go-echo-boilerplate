@@ -19,13 +19,13 @@ type ApplicationConfig struct {
 }
 
 type DBConfig struct {
-	Host     string
-	User     string
-	Password string
-	DBName   string
-	Port     string
-	TimeZone string
-	SSLMode  string 
+	DSN	  	 string
+	MaxConnIdle int
+	MaxConnIdleLifeTime time.Duration
+	MaxConn int
+	MaxConnLifeTime time.Duration
+
+	AutoMigrate bool
 }
 
 type ENVConfig struct {

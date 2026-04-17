@@ -3,20 +3,19 @@ package repositories
 import (
 	"errors"
 	"go-serviceboilerplate/commons/utils"
-	"go-serviceboilerplate/infrastrucutres/configurations"
+	"go-serviceboilerplate/infrastructures/configurations"
+	"go-serviceboilerplate/infrastructures/databases"
 	"slices"
 	"strings"
-
-	"gorm.io/gorm"
 )
 
 type AuthenticationsRepositories struct {
-	mainDB *gorm.DB
+	dbInstances *databases.DatabaseInstance
 	Configs *configurations.Configs
 }
 
-func NewAuthenticationsRepositories(mainDB *gorm.DB, configs *configurations.Configs) *AuthenticationsRepositories {
-	return &AuthenticationsRepositories{mainDB, configs}
+func NewAuthenticationsRepositories(dbInstances *databases.DatabaseInstance, configs *configurations.Configs) *AuthenticationsRepositories {
+	return &AuthenticationsRepositories{dbInstances, configs}
 }
 
 func (s AuthenticationsRepositories) VerifyClientID(clientID string) error {

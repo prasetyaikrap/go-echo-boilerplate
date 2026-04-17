@@ -40,13 +40,13 @@ func GetENVConfig() *models.ENVConfig {
 			  },
 		},
 		DB: models.DBConfig{
-			Host:     GetEnv("DB_AUTH_HOST", false, ""),
-			User:     GetEnv("DB_AUTH_USER", false, ""),
-			Password: GetEnv("DB_AUTH_PASSWORD", false, ""),
-			DBName:   GetEnv("DB_AUTH_NAME", false, ""),
-			Port:     GetEnv("DB_AUTH_PORT", false, ""),
-			TimeZone: GetEnv("DB_AUTH_TIMEZONE", false, ""),
-			SSLMode:  GetEnv("DB_AUTH_SSLMODE", false, ""),
+			DSN: 	  GetEnv("DB_DSN", false, ""),
+			MaxConnIdle: GetEnvInt("DB_MAX_CONN_IDLE", false, 10),
+			MaxConnIdleLifeTime: time.Duration(GetEnvInt("DB_MAX_CONN_IDLE_LIFETIME", false, 30)) * time.Minute,
+			MaxConn: GetEnvInt("DB_MAX_CONN", false, 25),
+			MaxConnLifeTime: time.Duration(GetEnvInt("DB_MAX_CONN_LIFETIME", false, 60)) * time.Minute,
+
+			AutoMigrate: GetEnv("DB_AUTO_MIGRATE", false, "false") == "true",
 		},
 	}
 
@@ -113,9 +113,9 @@ func GetAllowedOrigins() []string {
 }
 
 func GetAllowedClientIDs() []string {
-	allowedOrigins := strings.Split(GetEnv("ALLOWED_CLIENT_IDS", true, ""), ",")
+	allowedClientIDs := strings.Split(GetEnv("ALLOWED_CLIENT_IDS", false, "*"), ",")
 	var cleaned []string
-	for _, s := range allowedOrigins {
+	for _, s := range allowedClientIDs {
 		if s != "" {
 			cleaned = append(cleaned, s)
 		}

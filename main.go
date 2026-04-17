@@ -3,16 +3,16 @@ package main
 import (
 	"fmt"
 	"go-serviceboilerplate/applications/usecases"
+	"go-serviceboilerplate/commons/utils"
 	_ "go-serviceboilerplate/docs"
-	"go-serviceboilerplate/infrastrucutres/configurations"
-	"go-serviceboilerplate/infrastrucutres/databases/postgres/maindb"
-	"go-serviceboilerplate/infrastrucutres/repositories"
-	"go-serviceboilerplate/infrastrucutres/security"
+	"go-serviceboilerplate/infrastructures/configurations"
+	"go-serviceboilerplate/infrastructures/databases"
+	"go-serviceboilerplate/infrastructures/repositories"
+	"go-serviceboilerplate/infrastructures/security"
 	"go-serviceboilerplate/interfaces/http/api/system"
 	authMiddleware "go-serviceboilerplate/interfaces/http/middlewares/authentications"
 	loggerMiddleware "go-serviceboilerplate/interfaces/http/middlewares/logger"
 	"go-serviceboilerplate/interfaces/http/validator"
-	"go-serviceboilerplate/interfaces/utils"
 
 	"github.com/labstack/echo/v4"
 	echoMiddleware "github.com/labstack/echo/v4/middleware"
@@ -26,16 +26,16 @@ func main() {
 	// Configuration
 	configs := configurations.NewConfigurations()
 
-	// Initialize Postgres database connection
-	mainDb := maindb.NewAuthPostgressInstance(configs)
+	// Initialize database instances
+	dbInstances := databases.NewDatabaseInstance(configs)
 
 	// Security
 	passwordHashSecurity := security.NewPasswordHashSecurity(configs, 10)
 	tokenManagerSecurity := security.NewTokenManagerSecurity(configs)
 
 	// Repositories
-	systemRepositories := repositories.NewSystemRepositories(mainDb)
-	authenticationsRepositories := repositories.NewAuthenticationsRepositories(mainDb, configs)
+	systemRepositories := repositories.NewSystemRepositories(dbInstances)
+	authenticationsRepositories := repositories.NewAuthenticationsRepositories(dbInstances, configs)
 
 	// Usecases
 	systemUsecase := usecases.NewSystemUsecase(systemRepositories)

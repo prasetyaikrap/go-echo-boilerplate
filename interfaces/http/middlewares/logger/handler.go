@@ -2,7 +2,7 @@ package logger
 
 import (
 	"context"
-	"go-serviceboilerplate/infrastrucutres/configurations"
+	"go-serviceboilerplate/infrastructures/configurations"
 	"log/slog"
 
 	"github.com/labstack/echo/v4"

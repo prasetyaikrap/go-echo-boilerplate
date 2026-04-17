@@ -12,6 +12,7 @@ type Configs struct {
 func NewConfigurations() *Configs {
 	envConfigs := GetENVConfig()
 	logger := NewSlogLogger()
+	
 	return &Configs{
 		Envs:  envConfigs,
 		Logger: logger,

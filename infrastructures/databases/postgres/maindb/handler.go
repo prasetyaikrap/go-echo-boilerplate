@@ -2,7 +2,7 @@ package maindb
 
 import (
 	"fmt"
-	"go-serviceboilerplate/infrastrucutres/configurations"
+	"go-serviceboilerplate/infrastructures/configurations"
 	"log"
 	"os"
 	"time"
@@ -12,28 +12,25 @@ import (
 	"gorm.io/gorm/logger"
 )
 
+type AuthPostgresInstance struct {
+	configs *configurations.Configs
+}
+
 func NewAuthPostgressInstance(configs *configurations.Configs) *gorm.DB {
-	db, err := Database(configs)
+	instance := &AuthPostgresInstance{
+		configs: configs,
+	}
+	db, err := instance.Database()
 	if err != nil {
-        log.Fatalf("Database initialization failed: %v", err)
+        instance.configs.Logger.Fatal("Database initialization failed", err)
     }
 
-	AutoMigrate(db)
+	instance.AutoMigrate(db)
 	
 	return db
 }
 
-func Database(configs *configurations.Configs) (DB *gorm.DB, err error)  {	
-	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s TimeZone=%s",
-		configs.Envs.DB.Host,
-		configs.Envs.DB.User,
-		configs.Envs.DB.Password,
-		configs.Envs.DB.DBName,
-		configs.Envs.DB.Port,
-		configs.Envs.DB.SSLMode,
-		configs.Envs.DB.TimeZone,
-	)
-
+func (a *AuthPostgresInstance) Database() (DB *gorm.DB, err error)  {	
 	// Configure GORM logger for better visibility in development/production
 	newLogger := logger.New(
 		log.New(os.Stdout, "\r\n", log.LstdFlags), // io writer
@@ -50,7 +47,7 @@ func Database(configs *configurations.Configs) (DB *gorm.DB, err error)  {
 		Logger: newLogger,
 	}
 	
-	DB, err = gorm.Open(postgres.Open(dsn), gormConfig)
+	DB, err = gorm.Open(postgres.Open(a.configs.Envs.DB.DSN), gormConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
@@ -60,21 +57,22 @@ func Database(configs *configurations.Configs) (DB *gorm.DB, err error)  {
 		return nil, fmt.Errorf("failed to get underlying sql.DB: %w", err)
 	}
 
-	sqlDB.SetMaxIdleConns(10)                  // Maximum number of idle connections in the pool
-	sqlDB.SetMaxOpenConns(100)                 // Maximum number of open connections to the database
-	sqlDB.SetConnMaxLifetime(5 * time.Minute)  // Maximum amount of time a connection may be reused
+	sqlDB.SetMaxIdleConns(a.configs.Envs.DB.MaxConnIdle) 
+	sqlDB.SetConnMaxIdleTime(a.configs.Envs.DB.MaxConnIdleLifeTime)         // Maximum number of idle connections in the pool
+	sqlDB.SetMaxOpenConns(a.configs.Envs.DB.MaxConn)          // Maximum number of open connections to the database
+	sqlDB.SetConnMaxLifetime(a.configs.Envs.DB.MaxConnLifeTime)  	// Maximum amount of time a connection may be reused
 
-	fmt.Println("Database Successfully Connected")
+	a.configs.Logger.Info("Database Successfully Connected")
 
 	return DB, nil
 }
 
-func AutoMigrate(db *gorm.DB) {
+func (a *AuthPostgresInstance) AutoMigrate(db *gorm.DB) {
 	err := db.AutoMigrate()
 
 	if(err != nil) {
 		log.Fatalf("AutoMigrate failed: %v", err)
 	} 
 
-	fmt.Println("Database Migration Successful")
+	a.configs.Logger.Info("Database Migration Successful")
 }

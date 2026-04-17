@@ -2,8 +2,8 @@ package usecases
 
 import (
 	"go-serviceboilerplate/commons/models"
-	"go-serviceboilerplate/infrastrucutres/repositories"
-	"go-serviceboilerplate/infrastrucutres/security"
+	"go-serviceboilerplate/infrastructures/repositories"
+	"go-serviceboilerplate/infrastructures/security"
 )
 
 type AuthenticationsUsecase struct {

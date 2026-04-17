@@ -1,6 +1,6 @@
 package usecases
 
-import "go-serviceboilerplate/infrastrucutres/repositories"
+import "go-serviceboilerplate/infrastructures/repositories"
 
 type SystemUsecase struct {
 	systemRepository *repositories.SystemRepositories

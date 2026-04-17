@@ -3,7 +3,7 @@ package security
 import (
 	"errors"
 	"go-serviceboilerplate/commons/utils"
-	"go-serviceboilerplate/infrastrucutres/configurations"
+	"go-serviceboilerplate/infrastructures/configurations"
 	"unicode"
 
 	"golang.org/x/crypto/bcrypt"
