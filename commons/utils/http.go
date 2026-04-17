@@ -37,6 +37,10 @@ func SuccessResponse(c echo.Context, response SuccessResponseConfig) error {
 }
 
 func ErrorResponse(c echo.Context, err error) error {
+	if err == nil {
+		return nil
+	}
+
 	// Handle Echo's built-in HTTPError (e.g. 404, 405, etc)
 	if he, ok := err.(*echo.HTTPError); ok {
 		errorResponse := ErrorResponseConfig{
