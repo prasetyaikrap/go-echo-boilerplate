@@ -4,19 +4,34 @@ import (
 	"encoding/json"
 	"fmt"
 	"go-serviceboilerplate/commons/models"
+	"strconv"
 	"strings"
 
 	"gorm.io/gorm"
 )
 
-func GeneratePreloadRelations(db *gorm.DB, preloads *map[string][]any) *gorm.DB {
+func GeneratePreloadRelations(db *gorm.DB, preloads *map[string][]string) *gorm.DB {
 	if preloads == nil {
 		return db
 	}
 
 	for relation, conditions := range *preloads {
 		if len(conditions) > 0 {
-			db = db.Preload(relation, conditions...)
+			relationConditions := []any{}
+			for _, condition := range conditions {
+				switch {
+				case strings.HasPrefix(condition, "LIMIT"):
+					limitNumber, err := strconv.Atoi(strings.TrimPrefix(condition, "LIMIT "))
+					if err == nil {
+						relationConditions = append(relationConditions, func(db *gorm.DB) *gorm.DB {
+							return db.Limit(limitNumber)
+						})
+					}
+				default: 
+					relationConditions = append(relationConditions, condition)
+				}
+			}
+			db = db.Preload(relation, relationConditions...)
 		} else {
 			db = db.Preload(relation)
 		}
