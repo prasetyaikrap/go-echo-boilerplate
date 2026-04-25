@@ -3,6 +3,7 @@ package utils
 import (
 	"net/http"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
@@ -15,15 +16,17 @@ type SuccessResponseConfig struct {
 type SuccessResponseWithMetadataConfig struct {
 	Code    int         `json:"code"`
 	Message string      `json:"message"`
-	Data    []any 		`json:"data"`
+	Data    any 		`json:"data"`
 	Metadata Metadata	`json:"metadata"`
 }
 
 type Metadata struct {
-	TotalCount 	int `json:"total_count"`
-	TotalPage  	int `json:"total_page"`
-	CurrentPage int `json:"current_page"`
-	PerPage    	int `json:"per_page"`
+	TotalCount 	int64 `json:"total_count"`
+	TotalPage  	int64 `json:"total_page"`
+	CurrentPage int64 `json:"current_page"`
+	PerPage    	int64 `json:"per_page"`
+	NextCursor 	*string `json:"next_cursor,omitempty"`
+	PrevCursor 	*string `json:"prev_cursor,omitempty"`
 }
 
 type ErrorResponseConfig struct {
@@ -37,6 +40,7 @@ func SuccessResponse(c echo.Context, response SuccessResponseConfig) error {
 }
 
 func ErrorResponse(c echo.Context, err error) error {
+	errorID := uuid.New().String()
 	if err == nil {
 		return nil
 	}
@@ -47,6 +51,7 @@ func ErrorResponse(c echo.Context, err error) error {
 			Code:    he.Code,
 			Message: http.StatusText(he.Code),
 			Error: map[string]any{
+				"id": errorID,
 				"type": "HTTP_ERROR",
 				"code": he.Code,
 				"data": he.Message,
@@ -62,6 +67,7 @@ func ErrorResponse(c echo.Context, err error) error {
 			Code: http.StatusInternalServerError,
 			Message: err.Error(),
 			Error: map[string]any{
+				"id": errorID,
 				"type": "INTERNALSERVER_ERROR",
 				"code": http.StatusInternalServerError,
 				"data": nil,
@@ -74,6 +80,7 @@ func ErrorResponse(c echo.Context, err error) error {
 		Code: exceptions.Code,
 		Message: exceptions.Error(),
 		Error: map[string]any{
+			"id": errorID,
 			"type": exceptions.Type,
 			"code": exceptions.Code,
 			"data": exceptions.ErrorObject,
