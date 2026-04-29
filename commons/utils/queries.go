@@ -27,6 +27,11 @@ func GeneratePreloadRelations(db *gorm.DB, preloads *map[string][]string) *gorm.
 							return db.Limit(limitNumber)
 						})
 					}
+				case strings.HasPrefix(condition, "ORDER BY"):
+					orderClause := strings.TrimPrefix(condition, "ORDER BY ")
+					relationConditions = append(relationConditions, func(db *gorm.DB) *gorm.DB {
+						return db.Order(orderClause)
+					})
 				default: 
 					relationConditions = append(relationConditions, condition)
 				}
@@ -91,6 +96,13 @@ func GenerateQueries(db *gorm.DB, queries *models.Queries, defaultLimit int64) (
 				db = db.Where(fmt.Sprintf("%s IS NULL", filter.Column))
 			case models.OpIsNotNull:
 				db = db.Where(fmt.Sprintf("%s IS NOT NULL", filter.Column))
+			case models.OpNullConditional:
+				isNull := filter.Value.(bool)
+				if isNull {
+					db = db.Where(fmt.Sprintf("%s IS NULL", filter.Column))
+				} else {
+					db = db.Where(fmt.Sprintf("%s IS NOT NULL", filter.Column))
+				}
 			case models.OpBoolean:
 				db = db.Where(fmt.Sprintf("%s = ?", filter.Column), filter.Value)
 			case models.OpOr:

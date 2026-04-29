@@ -29,6 +29,7 @@ const (
 	OpNotBetween          = "not-between"
 	OpIsNull			  = "is-null"
 	OpIsNotNull			  = "is-not-null"
+	OpNullConditional	  = "null-conditional"
 	OpBoolean			  = "boolean"
 	OpOr				  = "or"
 )
