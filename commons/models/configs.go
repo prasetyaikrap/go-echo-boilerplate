@@ -28,7 +28,17 @@ type DBConfig struct {
 	AutoMigrate bool
 }
 
+type StorageR2Config struct {
+	AccountID 			string
+	AccessKeyID 		string
+	SecretAccessKey 	string
+	BucketName 			string
+	PublicHost 	string
+	BaseFolder		string
+}
+
 type ENVConfig struct {
 	Application 	ApplicationConfig
 	DB			DBConfig
+	StorageR2	StorageR2Config
 }

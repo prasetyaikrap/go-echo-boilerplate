@@ -48,6 +48,14 @@ func GetENVConfig() *models.ENVConfig {
 
 			AutoMigrate: GetEnv("DB_AUTO_MIGRATE", false, "false") == "true",
 		},
+		StorageR2: models.StorageR2Config{
+			AccountID: GetEnv("CF_R2_ACCOUNT_ID", false, ""),
+			AccessKeyID: GetEnv("CF_R2_ACCESS_KEY", false, ""),
+			SecretAccessKey: GetEnv("CF_R2_SECRET_ACCESS_KEY", false, ""),
+			BucketName: GetEnv("CF_R2_BUCKET_NAME", false, ""),
+			PublicHost: GetEnv("CF_R2_STORAGE_HOST", false, ""),
+			BaseFolder: GetEnv("CF_R2_BASE_FOLDER", false, ""),
+		},
 	}
 
 	return &envConfig

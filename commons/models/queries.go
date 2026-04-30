@@ -16,13 +16,6 @@ type Queries struct {
 	Filters []FilterQueries
 }
 
-type BaseQueriesRequest struct {
-	Queries string `query:"queries"`
-	Limit   int64  `query:"_limit"`
-	Page  	int64  `query:"_page"`
-	SortBy  string `query:"_sort"`
-}
-
 type FilterQueries struct {
 	Column  string
 	Operator string
