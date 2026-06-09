@@ -56,6 +56,14 @@ func GetENVConfig() *models.ENVConfig {
 			PublicHost: GetEnv("CF_R2_STORAGE_HOST", false, ""),
 			BaseFolder: GetEnv("CF_R2_BASE_FOLDER", false, ""),
 		},
+		LLM: models.LLMConfig{
+			Provider:        models.LLMProvider(GetEnv("LLM_PROVIDER", false, "")),
+			Model:           GetEnv("LLM_MODEL", false, "llama3"),
+			OllamaServerURL: GetEnv("LLM_OLLAMA_SERVER_URL", false, ""),
+			GeminiAPIKey:    GetEnv("LLM_GEMINI_API_KEY", false, ""),
+			OpenAIAPIKey:    GetEnv("LLM_OPENAI_API_KEY", false, ""),
+			ContextWindowSize: GetEnvInt("LLM_CONTEXT_WINDOW_SIZE", false, 20),
+		},
 	}
 
 	return &envConfig

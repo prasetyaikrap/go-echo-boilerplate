@@ -20,6 +20,15 @@ func GeneratePreloadRelations(db *gorm.DB, preloads *map[string][]string) *gorm.
 			relationConditions := []any{}
 			for _, condition := range conditions {
 				switch {
+				case strings.HasPrefix(condition, "SELECT"):
+					selectFields := strings.TrimPrefix(condition, "SELECT ")
+					relationConditions = append(relationConditions, func(db *gorm.DB) *gorm.DB {
+						return db.Select(selectFields)
+					})
+				case strings.HasPrefix(condition, "JOIN") || strings.HasPrefix(condition, "LEFT JOIN") || strings.HasPrefix(condition, "RIGHT JOIN"):
+					relationConditions = append(relationConditions, func(db *gorm.DB) *gorm.DB {
+						return db.Joins(condition)
+					})
 				case strings.HasPrefix(condition, "LIMIT"):
 					limitNumber, err := strconv.Atoi(strings.TrimPrefix(condition, "LIMIT "))
 					if err == nil {
@@ -36,6 +45,7 @@ func GeneratePreloadRelations(db *gorm.DB, preloads *map[string][]string) *gorm.
 					relationConditions = append(relationConditions, condition)
 				}
 			}
+
 			db = db.Preload(relation, relationConditions...)
 		} else {
 			db = db.Preload(relation)
@@ -182,45 +192,74 @@ func GenerateQueryListMetadata(totalCount, limit, page int64) models.QueryListMe
 func GenerateFilterQueries(queriesJsonString string, sortByString string, queriesOptions models.QueriesOptions) ([]models.FilterQueries, []string, error) {
 	var filters []models.FilterQueries
 	var sortBy []string
+	var defaultSortBy []string
 	var filterJson map[string]any
+	sortByMap := map[string]bool{}
 
 	if queriesJsonString != "" {
 		if err := json.Unmarshal([]byte(queriesJsonString), &filterJson); err != nil {
 			return filters, sortBy, NewInvariantError(err)
 		}
-
-		for key, value := range queriesOptions.Queries {
-			if v, exists := filterJson[key]; exists {
-				targetColumn := key
-				if value.Column != "" {
-					targetColumn = value.Column
-				}
-				filters = append(filters, models.FilterQueries{
-					Column:  targetColumn,
-					Operator: value.Operators,
-					Value:   v,
-				})
-			}
-		}
 	}
 
 	if sortByString != "" {
 		for sort := range strings.SplitSeq(sortByString, ",") {
-			sortField := strings.TrimSpace(sort)
-			if sortKey, exists := queriesOptions.Sort[strings.TrimPrefix(sortField, "-")]; exists {
-				hasPrefix := strings.HasPrefix(sortField, "-")
-				targetColumn := sortField
-				if sortKey.Column != "" {
-					targetColumn = strings.TrimSpace(sortKey.Column)
-				}
+			cleanSort := strings.TrimSpace(sort)
+			hasPrefix := strings.HasPrefix(cleanSort, "-")
+			sortField := strings.TrimPrefix(cleanSort, "-")
 
-				if hasPrefix {
-					sortBy = append(sortBy, fmt.Sprintf("-%s", targetColumn))
-				} else {
-					sortBy = append(sortBy, targetColumn)
-				}
+			sortByMap[sortField] = hasPrefix
+		}
+	}
+
+	for key, value := range queriesOptions.Queries {
+		targetColumn := key
+		if value.Column != "" {
+			targetColumn = value.Column
+		}
+
+		v, exists := filterJson[key]
+
+		if exists {
+			filters = append(filters, models.FilterQueries{
+				Column:  targetColumn,
+				Operator: value.Operators,
+				Value:   v,
+			})
+		} else if value.Default != nil {
+			filters = append(filters, models.FilterQueries{
+				Column:  targetColumn,
+				Operator: value.Operators,
+				Value:   value.Default,
+			})
+		}
+	}	
+
+	for key, sortItem := range queriesOptions.Sort {
+		targetColumn := key
+		if sortItem.Column != "" {
+			targetColumn = sortItem.Column
+		}
+
+		hasPrefix, exists := sortByMap[key]
+		
+		if exists {
+			if hasPrefix {
+				sortBy = append(sortBy, fmt.Sprintf("-%s", targetColumn))
+			} else {
+				sortBy = append(sortBy, targetColumn)
+			}
+		} else if sortItem.Default {
+			if sortItem.IsDescending {
+				defaultSortBy = append(defaultSortBy, fmt.Sprintf("-%s", targetColumn))
+			} else {
+				defaultSortBy = append(defaultSortBy, targetColumn)
 			}
 		}
+	}
+
+	if len(sortBy) <= 0 {
+		sortBy = defaultSortBy
 	}
 
 	return filters, sortBy, nil

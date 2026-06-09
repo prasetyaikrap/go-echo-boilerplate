@@ -33,3 +33,13 @@ const (
 	OpBoolean			  = "boolean"
 	OpOr				  = "or"
 )
+
+const (
+	LLMProviderOllama LLMProvider = "ollama"
+	LLMProviderGemini LLMProvider = "gemini"
+	LLMProviderOpenAI LLMProvider = "openai"
+)
+
+const (
+	AgentsPromptDirectory = "files/agents/prompts"
+)

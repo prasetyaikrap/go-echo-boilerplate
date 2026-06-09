@@ -16,6 +16,13 @@ type Queries struct {
 	Filters []FilterQueries
 }
 
+type BaseQueriesRequest struct {
+	Queries string `query:"queries"`
+	Limit   int64  `query:"_limit"`
+	Page  	int64  `query:"_page"`
+	SortBy  string `query:"_sort"`
+}
+
 type FilterQueries struct {
 	Column  string
 	Operator string
@@ -25,10 +32,13 @@ type FilterQueries struct {
 type QueriesItem struct {
 	Column  string
 	Operators string
+	Default any
 }
 
 type SortItem struct {
 	Column	string
+	Default bool
+	IsDescending bool
 }
 
 type QueriesOptions struct {
