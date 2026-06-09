@@ -45,6 +45,7 @@ func (a *AuthPostgresInstance) Database() (DB *gorm.DB, err error)  {
 
 	gormConfig := &gorm.Config{
 		Logger: newLogger,
+		TranslateError: true,
 	}
 	
 	DB, err = gorm.Open(postgres.Open(a.configs.Envs.DB.DSN), gormConfig)
