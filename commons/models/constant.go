@@ -1,5 +1,9 @@
 package models
 
+import (
+	"errors"
+)
+
 var (
 	XClientIdHeader	= "X-Client-Id"
 	XServiceTokenHeader = "X-Service-Token"
@@ -42,4 +46,9 @@ const (
 
 const (
 	AgentsPromptDirectory = "files/agents/prompts"
+)
+
+var (
+	// ErrCacheMiss is returned by cache getters when the key does not exist or has expired
+	ErrCacheMiss = errors.New("cache miss")
 )

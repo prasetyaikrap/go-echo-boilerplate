@@ -2,17 +2,17 @@ package storages
 
 import (
 	"go-serviceboilerplate/infrastructures/configurations"
-	cloudflare_r2 "go-serviceboilerplate/infrastructures/storages/cloudflare-r2"
+	"go-serviceboilerplate/infrastructures/storages/s3"
 )
 
 type StorageInstance struct {
-	MainR2Client *cloudflare_r2.CloudflareR2Instance
+	MainS3Client *s3.S3Instance
 }
 
 func NewStorageInstance(configs *configurations.Configs) *StorageInstance {
-	r2Client := cloudflare_r2.NewCloudflareR2Instance(configs)
+	s3Client := s3.NewS3Instance(configs)
 
 	return &StorageInstance{
-		MainR2Client: r2Client,
+		MainS3Client: s3Client,
 	}
 }

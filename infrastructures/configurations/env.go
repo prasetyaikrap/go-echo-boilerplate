@@ -39,22 +39,18 @@ func GetENVConfig() *models.ENVConfig {
 				AllowCredentials: true,
 			  },
 		},
-		DB: models.DBConfig{
-			DSN: 	  GetEnv("DB_DSN", false, ""),
-			MaxConnIdle: GetEnvInt("DB_MAX_CONN_IDLE", false, 10),
-			MaxConnIdleLifeTime: time.Duration(GetEnvInt("DB_MAX_CONN_IDLE_LIFETIME", false, 30)) * time.Minute,
-			MaxConn: GetEnvInt("DB_MAX_CONN", false, 25),
-			MaxConnLifeTime: time.Duration(GetEnvInt("DB_MAX_CONN_LIFETIME", false, 60)) * time.Minute,
-
-			AutoMigrate: GetEnv("DB_AUTO_MIGRATE", false, "false") == "true",
-		},
-		StorageR2: models.StorageR2Config{
-			AccountID: GetEnv("CF_R2_ACCOUNT_ID", false, ""),
-			AccessKeyID: GetEnv("CF_R2_ACCESS_KEY", false, ""),
-			SecretAccessKey: GetEnv("CF_R2_SECRET_ACCESS_KEY", false, ""),
-			BucketName: GetEnv("CF_R2_BUCKET_NAME", false, ""),
-			PublicHost: GetEnv("CF_R2_STORAGE_HOST", false, ""),
-			BaseFolder: GetEnv("CF_R2_BASE_FOLDER", false, ""),
+		MainDB: GetPostgresEnvConfig("main", "DB_"),
+		MainRedis: GetRedisEnvConfig("main", "REDIS_"),
+		StorageS3: models.StorageS3Config{
+			Endpoint: GetEnv("S3_ENDPOINT", false, ""),
+			Region: GetEnv("S3_REGION", false, "auto"),
+			AccessKeyID: GetEnv("S3_ACCESS_KEY", false, ""),
+			SecretAccessKey: GetEnv("S3_SECRET_ACCESS_KEY", false, ""),
+			BucketName: GetEnv("S3_BUCKET_NAME", false, ""),
+			PublicHost: GetEnv("S3_PUBLIC_HOST", false, ""),
+			BaseFolder: GetEnv("S3_BASE_FOLDER", false, ""),
+			UsePathStyle: GetEnv("S3_USE_PATH_STYLE", false, "false") == "true",
+			DefaultPresignExpire: time.Duration(GetEnvInt("S3_PRESIGN_EXPIRE", false, 15)) * time.Minute,
 		},
 		LLM: models.LLMConfig{
 			Provider:        models.LLMProvider(GetEnv("LLM_PROVIDER", false, "")),
@@ -67,6 +63,35 @@ func GetENVConfig() *models.ENVConfig {
 	}
 
 	return &envConfig
+}
+
+// GetPostgresEnvConfig loads a Postgres config from env vars sharing the same prefix,
+// e.g. prefix "ANALYTICS_DB_" reads ANALYTICS_DB_DSN, ANALYTICS_DB_MAX_CONN, etc.
+func GetPostgresEnvConfig(name string, prefix string) models.PostgresConfig {
+	return models.PostgresConfig{
+		Name: name,
+		DSN: 	  GetEnv(prefix + "DSN", false, ""),
+		MaxConnIdle: GetEnvInt(prefix + "MAX_CONN_IDLE", false, 10),
+		MaxConnIdleLifeTime: time.Duration(GetEnvInt(prefix + "MAX_CONN_IDLE_LIFETIME", false, 30)) * time.Minute,
+		MaxConn: GetEnvInt(prefix + "MAX_CONN", false, 25),
+		MaxConnLifeTime: time.Duration(GetEnvInt(prefix + "MAX_CONN_LIFETIME", false, 60)) * time.Minute,
+		LogLevel: GetEnv(prefix + "LOG_LEVEL", false, "info"),
+
+		AutoMigrate: GetEnv(prefix + "AUTO_MIGRATE", false, "false") == "true",
+	}
+}
+
+// GetRedisEnvConfig loads a Redis config from env vars sharing the same prefix,
+// e.g. prefix "SESSION_REDIS_" reads SESSION_REDIS_URL, SESSION_REDIS_KEY_PREFIX, etc.
+func GetRedisEnvConfig(name string, prefix string) models.RedisConfig {
+	return models.RedisConfig{
+		Name: name,
+		URL: GetEnv(prefix + "URL", false, "redis://localhost:6379/0"),
+		KeyPrefix: GetEnv(prefix + "KEY_PREFIX", false, ""),
+		DefaultTTL: time.Duration(GetEnvInt(prefix + "DEFAULT_TTL", false, 60)) * time.Minute,
+		PoolSize: GetEnvInt(prefix + "POOL_SIZE", false, 0),
+		PingTimeout: time.Duration(GetEnvInt(prefix + "PING_TIMEOUT", false, 5)) * time.Second,
+	}
 }
 
 func GetEnv(key string, required bool, defaultValue string) string {

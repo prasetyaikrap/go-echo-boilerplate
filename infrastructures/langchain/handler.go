@@ -52,11 +52,11 @@ func NewLangChainInstance(configs *configurations.Configs) (*LangChainInstance) 
 	}
 
 	if err != nil {
-		configs.Logger.Fatal("LangChain initialization failed [provider=%s]: %v", cfg.Provider, err)
+		configs.Logger.Fatal("LangChain initialization failed", "provider", cfg.Provider, "error", err)
 		return nil
 	}
 
-	configs.Logger.Info("LangChain initialized successfully with provider: %s", cfg.Provider)
+	configs.Logger.Info("LangChain initialized successfully", "provider", cfg.Provider, "model", cfg.Model)
 
 	return &LangChainInstance{
 		LLM:      llm,
