@@ -89,6 +89,29 @@ type RedisConfig struct {
 	PingTimeout 	time.Duration
 }
 
+// StompConfig holds the configuration for a single STOMP message broker connection (ActiveMQ, RabbitMQ STOMP plugin, Artemis, etc.).
+// Create one per connection the service needs. Loaded with GetStompEnvConfig(name, prefix), e.g. prefix "STOMP_" reads STOMP_ADDRESS, STOMP_LOGIN, etc.
+type StompConfig struct {
+	// Name identifies the connection in logs and errors (e.g. "main", "events")
+	Name 		string
+	// Address of the broker as "<host>:<port>" (env: <prefix>ADDRESS, default "localhost:61613")
+	Address 	string
+	// Login username. Empty sends no credentials (env: <prefix>LOGIN)
+	Login 		string
+	// Passcode for Login (env: <prefix>PASSCODE)
+	Passcode 	string
+	// Host is the virtual host sent on CONNECT. Empty uses the host part of Address. RabbitMQ default vhost: "/" (env: <prefix>HOST)
+	Host 		string
+	// UseTLS connects over TLS (e.g. Amazon MQ "stomp+ssl" endpoints) (env: <prefix>USE_TLS, "true" to enable)
+	UseTLS 		bool
+	// HeartBeat is the send/receive heart-beat interval used to detect dead connections. Zero uses the go-stomp default (1 minute) (env: <prefix>HEARTBEAT in seconds, default 10)
+	HeartBeat 	time.Duration
+	// ConnectTimeout bounds dialing and the CONNECT handshake. Zero means no timeout (env: <prefix>CONNECT_TIMEOUT in seconds, default 10)
+	ConnectTimeout 	time.Duration
+	// ReconnectInterval is the wait between reconnect attempts after the connection drops. Zero disables auto-reconnect (env: <prefix>RECONNECT_INTERVAL in seconds, default 5)
+	ReconnectInterval 	time.Duration
+}
+
 // ENVConfig is the root configuration loaded from environment variables (and .env if present) on startup
 type ENVConfig struct {
 	// Application holds the service-level settings
@@ -97,6 +120,8 @@ type ENVConfig struct {
 	MainDB		PostgresConfig
 	// MainRedis is the primary Redis instance (env prefix: REDIS_)
 	MainRedis	RedisConfig
+	// MainStomp is the primary STOMP message broker connection (env prefix: STOMP_)
+	MainStomp	StompConfig
 	// StorageS3 is the S3-compatible object storage (env prefix: S3_)
 	StorageS3	StorageS3Config
 	// LLM selects and configures the LLM provider (env prefix: LLM_)

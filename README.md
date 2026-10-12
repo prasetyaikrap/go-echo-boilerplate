@@ -10,6 +10,7 @@ A production-ready starter template for building backend REST API services using
 | ORM | [GORM](https://gorm.io/) |
 | Database | PostgreSQL (one or more databases) |
 | Cache | Redis via [go-redis v9](https://github.com/redis/go-redis) |
+| Message Broker | STOMP (ActiveMQ, RabbitMQ, Artemis) via [go-stomp v3](https://github.com/go-stomp/stomp) |
 | Object Storage | Any S3-compatible storage (AWS S3, Cloudflare R2, MinIO) via [aws-sdk-go-v2](https://github.com/aws/aws-sdk-go-v2) |
 | LLM | [LangChainGo](https://github.com/tmc/langchaingo) — Ollama, Gemini, or OpenAI |
 | JWT | [golang-jwt/jwt v5](https://github.com/golang-jwt/jwt) |
@@ -36,14 +37,16 @@ A production-ready starter template for building backend REST API services using
 │   ├── models/                      # Shared data models and types
 │   │   ├── app.go                   # Base request/payload types
 │   │   ├── authentications.go       # JWT claims, auth request/response models
-│   │   ├── configs.go               # All config structs (app, Postgres, Redis, S3, LLM)
+│   │   ├── configs.go               # All config structs (app, Postgres, Redis, STOMP, S3, LLM)
 │   │   ├── constant.go              # Global constants and shared errors
+│   │   ├── message_broker.go        # BrokerMessage and BrokerMessageHandler (protocol-agnostic)
 │   │   └── queries.go               # Query/filter/sort models
 │   └── utils/                       # Shared utility functions
 │       ├── agents.go                # LLM prompt file loading and templating
 │       ├── exceptions.go            # Custom error types (ClientError, NotFoundError, etc.)
 │       ├── general.go               # General helpers
 │       ├── http.go                  # HTTP response helpers (SuccessResponse, ErrorResponse)
+│       ├── message_broker.go        # Message payload encoding
 │       └── queries.go               # GORM query builder helpers
 │
 ├── docs/                            # Auto-generated Swagger docs (do not edit manually)
@@ -59,6 +62,9 @@ A production-ready starter template for building backend REST API services using
 │   │   ├── handler.go               # DatabaseInstance — aggregates DB connections
 │   │   ├── postgres/                # Generic PostgreSQL connection (GORM), reusable per database
 │   │   └── redis/                   # Generic Redis connection with cache helpers, reusable per instance
+│   ├── message_broker/
+│   │   ├── handler.go               # MessageBroker interface + MessageBrokerInstance
+│   │   └── stomp/                   # STOMP client with auto-reconnect, reusable per connection
 │   ├── storages/
 │   │   ├── handler.go               # StorageInstance — aggregates storage clients
 │   │   └── s3/                      # S3-compatible storage client (AWS S3, R2, MinIO)
@@ -88,7 +94,7 @@ A production-ready starter template for building backend REST API services using
 
 - Go **1.26** or later
 - PostgreSQL database
-- Optional: Redis, an S3-compatible bucket, and an LLM provider — only needed when you use those features
+- Optional: Redis, a STOMP message broker, an S3-compatible bucket, and an LLM provider — only needed when you use those features
 
 ## Getting Started
 
@@ -144,6 +150,12 @@ Optional services:
 REDIS_URL=redis://localhost:6379/0 # rediss:// for TLS
 REDIS_KEY_PREFIX=myservice:
 REDIS_DEFAULT_TTL=60               # Minutes
+
+# STOMP message broker (example: RabbitMQ with the STOMP plugin)
+STOMP_ADDRESS=localhost:61613
+STOMP_LOGIN=guest
+STOMP_PASSCODE=guest
+STOMP_HOST=/                       # Virtual host
 
 # S3-compatible storage (example: Cloudflare R2)
 S3_ENDPOINT=https://<account_id>.r2.cloudflarestorage.com
@@ -253,6 +265,159 @@ err = mainRedis.RemoveCache(ctx, "user:1", "user:2")
 ```
 
 Add another instance with `GetRedisEnvConfig("session", "SESSION_REDIS_")`, the same way as Postgres.
+
+### Message broker (STOMP)
+
+Works with any STOMP broker — ActiveMQ, RabbitMQ (STOMP plugin), Artemis, Amazon MQ. The broker is not wired by default, so the server starts without one.
+
+#### 1. Run a broker locally (optional)
+
+RabbitMQ with the STOMP plugin enabled:
+
+```bash
+docker run -d --name rabbitmq \
+  -e RABBITMQ_DEFAULT_USER=app -e RABBITMQ_DEFAULT_PASS=app \
+  -p 61613:61613 -p 15672:15672 \
+  rabbitmq:3.13-management \
+  sh -c "rabbitmq-plugins enable --offline rabbitmq_stomp && exec docker-entrypoint.sh rabbitmq-server"
+```
+
+Management UI: http://localhost:15672 (app / app).
+
+#### 2. Configure
+
+```env
+STOMP_ADDRESS=localhost:61613
+STOMP_LOGIN=app
+STOMP_PASSCODE=app
+STOMP_HOST=/                       # RabbitMQ virtual host — required for RabbitMQ
+STOMP_HEARTBEAT=10                 # Seconds
+STOMP_RECONNECT_INTERVAL=5         # Seconds; 0 disables auto-reconnect
+```
+
+#### 3. Connect in `main.go`
+
+```go
+import "go-serviceboilerplate/infrastructures/message_broker/stomp"
+
+mainStomp := stomp.NewStompInstance(configs, configs.Envs.MainStomp)
+```
+
+`Close()` waits for in-flight message handlers before disconnecting, so call it on shutdown. `e.Logger.Fatal(e.Start(...))` exits without running deferred calls, so use a graceful shutdown instead:
+
+```go
+go func() {
+    if err := e.Start(fmt.Sprintf(":%s", configs.Envs.Application.Port)); err != nil && !errors.Is(err, http.ErrServerClosed) {
+        e.Logger.Fatal(err)
+    }
+}()
+
+quit := make(chan os.Signal, 1)
+signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+<-quit
+
+ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+defer cancel()
+_ = e.Shutdown(ctx)    // stop accepting HTTP requests
+_ = mainStomp.Close()  // finish in-flight messages, then disconnect
+```
+
+#### 4. Publish from a repository
+
+Depend on the `message_broker.MessageBroker` interface, not the STOMP type, so the protocol can change without touching this code.
+
+```go
+// infrastructures/repositories/orders.go
+package repositories
+
+import (
+    "context"
+    "go-serviceboilerplate/commons/models"
+    "go-serviceboilerplate/infrastructures/message_broker"
+)
+
+type OrdersRepositories struct {
+    broker message_broker.MessageBroker
+}
+
+func NewOrdersRepositories(broker message_broker.MessageBroker) *OrdersRepositories {
+    return &OrdersRepositories{broker}
+}
+
+func (r *OrdersRepositories) PublishOrderCreated(ctx context.Context, order models.Order) error {
+    // Structs are sent as JSON, string as text/plain, []byte as-is. Headers are optional
+    return r.broker.Publish(ctx, "/queue/orders.created", order, map[string]string{
+        "x-order-id": order.ID,
+    })
+}
+```
+
+#### 5. Consume in the interface layer
+
+Consumers are an entry point like HTTP handlers, so they live under `interfaces/`, with the same `handler.go` + registration file split as `interfaces/http/api/<domain>/`.
+
+```go
+// interfaces/message_broker/orders/handler.go
+package orders
+
+import (
+    "context"
+    "go-serviceboilerplate/applications/usecases"
+    "go-serviceboilerplate/commons/models"
+)
+
+type OrdersConsumer struct {
+    ordersUsecase *usecases.OrdersUsecase
+}
+
+func NewOrdersConsumer(ordersUsecase *usecases.OrdersUsecase) *OrdersConsumer {
+    return &OrdersConsumer{ordersUsecase}
+}
+
+// HandleOrderCreated returns nil to acknowledge the message, or an error to reject it so the broker redelivers it
+func (h *OrdersConsumer) HandleOrderCreated(ctx context.Context, msg models.BrokerMessage) error {
+    var order models.Order
+    if err := msg.Bind(&order); err != nil {
+        return nil // malformed payload will never succeed: ack it instead of redelivering forever
+    }
+
+    return h.ordersUsecase.ProcessOrder(ctx, order)
+}
+```
+
+```go
+// interfaces/message_broker/orders/subscription.go
+package orders
+
+import "go-serviceboilerplate/infrastructures/message_broker"
+
+func (h *OrdersConsumer) RegisterSubscriptions(broker message_broker.MessageBroker) error {
+    // The last argument is optional SUBSCRIBE headers, e.g. a prefetch limit
+    return broker.Subscribe("/queue/orders.created", h.HandleOrderCreated, map[string]string{
+        "prefetch-count": "10",
+    })
+}
+```
+
+```go
+// main.go
+ordersRepositories := repositories.NewOrdersRepositories(mainStomp)
+ordersUsecase := usecases.NewOrdersUsecase(ordersRepositories)
+
+ordersConsumer := orders.NewOrdersConsumer(ordersUsecase)
+if err := ordersConsumer.RegisterSubscriptions(mainStomp); err != nil {
+    configs.Logger.Fatal("Failed to register order subscriptions", "error", err)
+}
+```
+
+#### Behaviour
+
+- **Reconnect** — if the connection drops, it reconnects every `STOMP_RECONNECT_INTERVAL` seconds and resubscribes every active subscription. `Publish` reconnects and retries once.
+- **Ack / nack** — each message is acknowledged individually after the handler returns `nil`. An error or a panic sends a NACK and the broker redelivers it (or dead-letters it, depending on broker setup).
+- **At-least-once** — a message can be delivered more than once (e.g. after a reconnect), so make handlers idempotent.
+- **One message at a time per subscription** — set a prefetch limit (`prefetch-count` for RabbitMQ, `activemq.prefetchSize` for ActiveMQ) so a slow handler doesn't stall the connection.
+- **Destinations** — `/queue/<name>` for point-to-point, `/topic/<name>` for publish/subscribe. Brokers may support more (e.g. RabbitMQ `/exchange/<name>/<routing-key>`).
+- **More connections** — add a config with `GetStompEnvConfig("events", "EVENTS_STOMP_")` and call `stomp.NewStompInstance` again, the same way as Postgres and Redis.
 
 ### S3-compatible storage
 

@@ -51,4 +51,7 @@ const (
 var (
 	// ErrCacheMiss is returned by cache getters when the key does not exist or has expired
 	ErrCacheMiss = errors.New("cache miss")
+
+	// ErrMessageBrokerClosed is returned when publishing or subscribing on a message broker connection that has been closed
+	ErrMessageBrokerClosed = errors.New("message broker connection closed")
 )

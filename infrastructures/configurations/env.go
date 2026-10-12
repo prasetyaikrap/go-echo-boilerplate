@@ -41,6 +41,7 @@ func GetENVConfig() *models.ENVConfig {
 		},
 		MainDB: GetPostgresEnvConfig("main", "DB_"),
 		MainRedis: GetRedisEnvConfig("main", "REDIS_"),
+		MainStomp: GetStompEnvConfig("main", "STOMP_"),
 		StorageS3: models.StorageS3Config{
 			Endpoint: GetEnv("S3_ENDPOINT", false, ""),
 			Region: GetEnv("S3_REGION", false, "auto"),
@@ -91,6 +92,22 @@ func GetRedisEnvConfig(name string, prefix string) models.RedisConfig {
 		DefaultTTL: time.Duration(GetEnvInt(prefix + "DEFAULT_TTL", false, 60)) * time.Minute,
 		PoolSize: GetEnvInt(prefix + "POOL_SIZE", false, 0),
 		PingTimeout: time.Duration(GetEnvInt(prefix + "PING_TIMEOUT", false, 5)) * time.Second,
+	}
+}
+
+// GetStompEnvConfig loads a STOMP broker config from env vars sharing the same prefix,
+// e.g. prefix "EVENTS_STOMP_" reads EVENTS_STOMP_ADDRESS, EVENTS_STOMP_LOGIN, etc.
+func GetStompEnvConfig(name string, prefix string) models.StompConfig {
+	return models.StompConfig{
+		Name: name,
+		Address: GetEnv(prefix + "ADDRESS", false, "localhost:61613"),
+		Login: GetEnv(prefix + "LOGIN", false, ""),
+		Passcode: GetEnv(prefix + "PASSCODE", false, ""),
+		Host: GetEnv(prefix + "HOST", false, ""),
+		UseTLS: GetEnv(prefix + "USE_TLS", false, "false") == "true",
+		HeartBeat: time.Duration(GetEnvInt(prefix + "HEARTBEAT", false, 30)) * time.Second,
+		ConnectTimeout: time.Duration(GetEnvInt(prefix + "CONNECT_TIMEOUT", false, 60)) * time.Second,
+		ReconnectInterval: time.Duration(GetEnvInt(prefix + "RECONNECT_INTERVAL", false, 15)) * time.Second,
 	}
 }
 

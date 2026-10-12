@@ -11,6 +11,7 @@ This document provides context for AI agents to understand the structure and con
 - **HTTP framework**: Echo v4
 - **ORM**: GORM with PostgreSQL
 - **Cache**: Redis (`github.com/redis/go-redis/v9`)
+- **Message broker**: STOMP (`github.com/go-stomp/stomp/v3`) — ActiveMQ, RabbitMQ STOMP plugin, Artemis
 - **Object storage**: any S3-compatible storage — AWS S3, Cloudflare R2, MinIO (`aws-sdk-go-v2/service/s3`)
 - **LLM**: LangChainGo (`github.com/tmc/langchaingo`) with Ollama, Gemini, or OpenAI
 - **Auth**: JWT (golang-jwt/jwt v5) + bcrypt password hashing
@@ -33,13 +34,15 @@ This document provides context for AI agents to understand the structure and con
 │   │   ├── app.go                           # BaseRequest, BasePayload (carry context.Context)
 │   │   ├── authentications.go               # Token claims, auth request/response types
 │   │   ├── configs.go                       # ENVConfig and every *Config struct
-│   │   ├── constant.go                      # Headers, filter operators, LLM providers, shared errors (ErrCacheMiss)
+│   │   ├── constant.go                      # Headers, filter operators, LLM providers, shared errors (ErrCacheMiss, ErrMessageBrokerClosed)
+│   │   ├── message_broker.go                # BrokerMessage (+ Bind), BrokerMessageHandler
 │   │   └── queries.go                       # Queries, FilterQueries, QueriesOptions, BaseQueriesRequest
 │   └── utils/
 │       ├── agents.go                        # Prompt file loading and {{placeholder}} replacement
 │       ├── exceptions.go                    # Custom error types (ClientError, NotFoundError, ...)
 │       ├── general.go                       # Small helpers (GenerateTokenID, IsSafeSpecialChar)
 │       ├── http.go                          # SuccessResponse, ErrorResponse, HttpErrorHandler
+│       ├── message_broker.go                # EncodeMessagePayload ([]byte raw, string text, else JSON)
 │       └── queries.go                       # GenerateQueries, GenerateFilterQueries
 ├── infrastructures/
 │   ├── configurations/
@@ -50,6 +53,9 @@ This document provides context for AI agents to understand the structure and con
 │   │   ├── handler.go                       # DatabaseInstance — one exported field per database
 │   │   ├── postgres/handler.go              # Generic NewPostgresInstance(configs, PostgresConfig, migrateModels...)
 │   │   └── redis/handler.go                 # Generic NewRedisInstance(configs, RedisConfig) + SaveCache/GetCache/RemoveCache
+│   ├── message_broker/
+│   │   ├── handler.go                       # MessageBroker interface, MessageBrokerInstance
+│   │   └── stomp/handler.go                 # Generic NewStompInstance(configs, StompConfig): Publish/Subscribe/Close, auto-reconnect
 │   ├── storages/
 │   │   ├── handler.go                       # StorageInstance — holds MainS3Client
 │   │   └── s3/handler.go                    # S3Instance: Upload/Get/Delete object, public URL, presigned GET/PUT URLs
@@ -141,6 +147,16 @@ interfaces → applications → infrastructures → commons
   - `Close()`
 - Do not create a new sub-package per database. Add a config + a constructor call instead (see "Adding Another Database or Redis").
 
+### `infrastructures/message_broker/`
+- `MessageBroker` interface (`Publish`, `Subscribe`, `Close`) is the protocol-agnostic contract. Repositories and use cases depend on this interface, never on a concrete protocol package.
+- `stomp.NewStompInstance(configs, stompConfig)` is generic — one call per connection. It connects on startup (fatal on failure) and returns `*StompInstance`:
+  - `Publish(ctx, destination, payload, headers)` — payload encoded with `utils.EncodeMessagePayload`. Reconnects and retries once if the connection dropped.
+  - `Subscribe(destination, handler, headers)` — consumes in a background goroutine with `client-individual` ack. Handler returning `nil` → ACK; error or panic → NACK. Resubscribes automatically after reconnect. `headers` are SUBSCRIBE headers (e.g. `prefetch-count`).
+  - `Close()` — stops consumers, waits for in-flight handlers, then disconnects. Afterwards calls return `models.ErrMessageBrokerClosed`.
+- Handlers receive `models.BrokerMessage`; decode JSON with `msg.Bind(&dest)`. Delivery is at-least-once — handlers must be idempotent, and should return `nil` for messages that can never succeed (malformed payloads) to avoid endless redelivery.
+- go-stomp's internal logs are routed through `SlogLogger`.
+- **Adding a protocol** (AMQP, Kafka, NATS, ...): create `message_broker/<protocol>/handler.go` with a `New<Protocol>Instance(configs, <Protocol>Config)` constructor implementing `MessageBroker`, add `<Protocol>Config` + `Get<Protocol>EnvConfig(name, prefix)`, and add a compile-time check `var _ MessageBroker = (*<protocol>.<Protocol>Instance)(nil)` in `message_broker/handler.go`. Reuse `models.BrokerMessage` and `utils.EncodeMessagePayload`.
+
 ### `infrastructures/storages/`
 - `StorageInstance` holds `MainS3Client *s3.S3Instance`.
 - `S3Instance` works with any S3-compatible provider; only the config changes (`Endpoint`, `Region`, `UsePathStyle`). Do not add provider-specific packages.
@@ -193,7 +209,7 @@ interfaces → applications → infrastructures → commons
 
 ---
 
-## Adding Another Database or Redis
+## Adding Another Database, Redis or Message Broker Connection
 
 No new package is needed — reuse the generic constructors.
 
@@ -209,7 +225,13 @@ No new package is needed — reuse the generic constructors.
 3. `main.go` — `sessionRedis := redis.NewRedisInstance(configs, configs.Envs.SessionRedis)` and `defer sessionRedis.Close()`, then inject it where needed.
 4. `.env_example` — add `SESSION_REDIS_URL`, etc.
 
-Redis and S3 are not wired into `main.go` by default, so the app starts without them. Wire them in when a feature needs them.
+**STOMP** (example: `events`):
+1. `commons/models/configs.go` — add `EventsStomp StompConfig` to `ENVConfig`.
+2. `infrastructures/configurations/env.go` — `EventsStomp: GetStompEnvConfig("events", "EVENTS_STOMP_"),`
+3. `main.go` (or `message_broker/handler.go`) — `eventsStomp := stomp.NewStompInstance(configs, configs.Envs.EventsStomp)` and `defer eventsStomp.Close()`.
+4. `.env_example` — add `EVENTS_STOMP_ADDRESS`, etc.
+
+Redis, the message broker and S3 are not wired into `main.go` by default, so the app starts without them. Wire them in when a feature needs them.
 
 ---
 
@@ -310,6 +332,19 @@ See `.env_example` for examples. Durations are integers in the unit shown.
 | `REDIS_DEFAULT_TTL` | No | Minutes; default 60 |
 | `REDIS_POOL_SIZE` | No | Overrides go-redis default pool size |
 | `REDIS_PING_TIMEOUT` | No | Seconds; default 5 |
+
+**STOMP message broker** — main connection uses prefix `STOMP_`; additional connections use their own prefix with the same keys
+
+| Key | Required | Description |
+|---|---|---|
+| `STOMP_ADDRESS` | No | `<host>:<port>`; default `localhost:61613` |
+| `STOMP_LOGIN` | No | Username; empty sends no credentials |
+| `STOMP_PASSCODE` | No | Password |
+| `STOMP_HOST` | No | Virtual host (RabbitMQ: `/`); empty uses the host of `STOMP_ADDRESS` |
+| `STOMP_USE_TLS` | No | `true` to connect over TLS |
+| `STOMP_HEARTBEAT` | No | Seconds; default 10 |
+| `STOMP_CONNECT_TIMEOUT` | No | Seconds; default 10 |
+| `STOMP_RECONNECT_INTERVAL` | No | Seconds; default 5; `0` disables auto-reconnect |
 
 **S3-compatible storage**
 
