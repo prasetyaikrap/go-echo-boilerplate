@@ -226,6 +226,12 @@ interfaces → applications → infrastructures → commons
 - When wiring a new dependency (Redis, MongoDB, ...), add its `Ping` to the readiness checks: `"redis": mainRedis.Ping`. Checks must respect `ctx` so they stop when the probe times out.
 - New public, unauthenticated routes must be added to `models.ClientVerificationSkipPaths`.
 
+### Server-Sent Events (streaming)
+- Use `utils.SuccessResponseSSEvent(c, utils.SuccessResponseSSEventConfig{Event, Data})` per event and `utils.ErrorResponseSSEvent(c, err)` for failures.
+- `Data` as a `string` / `[]byte` is sent as-is (pre-encoded JSON is not encoded twice); any other value is JSON-encoded. Multi-line data is split into one `data:` line per line, so LLM output with newlines is safe.
+- The `error` event's data is the same JSON body as `ErrorResponse`: `{code, message, error: {id, type, code, data}}`, with internal details hidden.
+- Add every streaming route pattern to `models.RequestTimeoutSkipPaths`, or `REQUEST_TIMEOUT` cancels the stream (and the LLM call using the request `ctx`) when it passes.
+
 ---
 
 ## Context (`context.Context`)

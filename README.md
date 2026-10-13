@@ -264,6 +264,7 @@ func (r *OrdersRepositories) GetOrders(ctx context.Context, status string) ([]mo
 What the request `ctx` gives you:
 
 - **Cancellation** — database, cache and broker calls stop when the client disconnects or `REQUEST_TIMEOUT` passes (the request returns 503).
+- **Streaming (SSE)** — routes listed in `models.RequestTimeoutSkipPaths` have no deadline, so long LLM streams are not cut off by `REQUEST_TIMEOUT`. `utils.SuccessResponseSSEvent` JSON-encodes non-string data and keeps multi-line text intact; `utils.ErrorResponseSSEvent` sends the standard error body as JSON.
 - **Request ID** — taken from the incoming `X-Request-Id` header or generated, returned in the response, added to every log line, and forwarded to STOMP consumers. One ID follows a request across services.
 - **User claims** — `utils.AccessTokenClaimsFromContext(ctx)` on authenticated routes.
 

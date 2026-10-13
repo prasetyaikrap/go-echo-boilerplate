@@ -22,6 +22,10 @@ var (
 	// Add "/swagger/*" here to open the Swagger UI in a browser
 	ClientVerificationSkipPaths = []string{HealthLivenessPath, HealthReadinessPath}
 
+	// RequestTimeoutSkipPaths are route paths without the REQUEST_TIMEOUT deadline, e.g. SSE streams of LLM responses
+	// that can run longer than the timeout. Use the route pattern, such as "/v1/agents/:id/chat"
+	RequestTimeoutSkipPaths = []string{}
+
 	// XRequestIDHeader carries the request ID across services (HTTP) and through message brokers (message header)
 	XRequestIDHeader = "X-Request-Id"
 

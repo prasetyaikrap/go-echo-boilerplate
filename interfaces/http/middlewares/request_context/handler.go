@@ -1,6 +1,9 @@
 package request_context
 
 import (
+	"slices"
+
+	"go-serviceboilerplate/commons/models"
 	"go-serviceboilerplate/commons/utils"
 	"go-serviceboilerplate/infrastructures/configurations"
 
@@ -21,11 +24,17 @@ func NewRequestIDMiddleware() echo.MiddlewareFunc {
 
 // NewRequestTimeoutMiddleware sets a deadline on the request context (REQUEST_TIMEOUT). Work that receives the ctx
 // (database, cache, broker, outgoing HTTP) is cancelled when it passes, and the request returns 503 Service Unavailable.
+// Routes in models.RequestTimeoutSkipPaths (streaming) get no deadline.
 func NewRequestTimeoutMiddleware(configs *configurations.Configs) echo.MiddlewareFunc {
 	timeout := configs.Envs.Application.RequestTimeout
 	if timeout <= 0 {
 		return func(next echo.HandlerFunc) echo.HandlerFunc { return next }
 	}
 
-	return echoMiddleware.ContextTimeoutWithConfig(echoMiddleware.ContextTimeoutConfig{Timeout: timeout})
+	return echoMiddleware.ContextTimeoutWithConfig(echoMiddleware.ContextTimeoutConfig{
+		Timeout: timeout,
+		Skipper: func(c echo.Context) bool {
+			return slices.Contains(models.RequestTimeoutSkipPaths, c.Path())
+		},
+	})
 }

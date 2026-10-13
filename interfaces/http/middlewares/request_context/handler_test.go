@@ -69,3 +69,34 @@ func TestRequestTimeoutMiddleware(t *testing.T) {
 		})
 	}
 }
+
+func TestRequestTimeoutSkipsStreamingRoutes(t *testing.T) {
+	original := models.RequestTimeoutSkipPaths
+	models.RequestTimeoutSkipPaths = []string{"/agents/:id/chat"}
+	t.Cleanup(func() { models.RequestTimeoutSkipPaths = original })
+
+	configs := &configurations.Configs{
+		Envs:   &models.ENVConfig{Application: models.ApplicationConfig{RequestTimeout: time.Second}},
+		Logger: configurations.NewSlogLogger(),
+	}
+
+	deadlines := map[string]bool{}
+	e := echo.New()
+	e.Use(NewRequestTimeoutMiddleware(configs))
+	handler := func(c echo.Context) error {
+		_, deadlines[c.Path()] = c.Request().Context().Deadline()
+		return c.NoContent(http.StatusOK)
+	}
+	e.POST("/agents/:id/chat", handler)
+	e.POST("/agents/:id", handler)
+
+	e.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/agents/1/chat", nil))
+	e.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/agents/1", nil))
+
+	if deadlines["/agents/:id/chat"] {
+		t.Error("streaming route should have no deadline")
+	}
+	if !deadlines["/agents/:id"] {
+		t.Error("other routes should keep the deadline")
+	}
+}

@@ -2,9 +2,9 @@ package utils
 
 import (
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -51,45 +51,48 @@ func SuccessResponse(c echo.Context, response SuccessResponseConfig) error {
 }
 
 func ErrorResponse(c echo.Context, err error) error {
-	errorID := uuid.New().String()
-
 	if err == nil {
 		return nil
 	}
 
+	errorResponse := buildErrorResponse(c, err)
+	return c.JSON(errorResponse.Code, errorResponse)
+}
+
+// buildErrorResponse is the error body shared by JSON and SSE error responses
+func buildErrorResponse(c echo.Context, err error) ErrorResponseConfig {
+	errorID := uuid.New().String()
+
 	// Handle Echo's built-in HTTPError (e.g. 404, 405, etc)
 	if he, ok := err.(*echo.HTTPError); ok {
-		errorResponse := ErrorResponseConfig{
+		return ErrorResponseConfig{
 			Code:    he.Code,
 			Message: http.StatusText(he.Code),
 			Error: map[string]any{
-				"id": errorID,
+				"id":   errorID,
 				"type": "HTTP_ERROR",
 				"code": he.Code,
 				"data": he.Message,
 			},
 		}
-		return c.JSON(he.Code, errorResponse)
 	}
 
 	// Handle custom application exceptions
-	exceptions, ok := err.(*Exceptions);
+	exceptions, ok := err.(*Exceptions)
 	if !ok {
-		return c.JSON(http.StatusInternalServerError, internalServerErrorResponse(c, err, errorID))
+		return internalServerErrorResponse(c, err, errorID)
 	}
 
-	exceptionResponse := ErrorResponseConfig{
-		Code: exceptions.Code,
+	return ErrorResponseConfig{
+		Code:    exceptions.Code,
 		Message: exceptions.Error(),
 		Error: map[string]any{
-			"id": errorID,
+			"id":   errorID,
 			"type": exceptions.Type,
 			"code": exceptions.Code,
 			"data": exceptions.ErrorObject,
 		},
 	}
-
-	return c.JSON(exceptions.Code, exceptionResponse)
 }
 
 func SuccessResponseWithMetadata(c echo.Context, response SuccessResponseWithMetadataConfig) error {
@@ -106,35 +109,50 @@ func HttpErrorHandler(err error, c echo.Context) {
 	ErrorResponse(c, err)
 }
 
+// SuccessResponseSSEvent writes one Server-Sent Event. A string or []byte Data is sent as-is (so pre-encoded JSON
+// is not encoded twice); any other value is JSON-encoded. Multi-line data is split into one "data:" line per line,
+// which clients join back with "\n"
 func SuccessResponseSSEvent(c echo.Context, response SuccessResponseSSEventConfig) error {
-	w := c.Response()
-	if !w.Committed {
-		w.Header().Set(echo.HeaderContentType, "text/event-stream")
-		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Connection", "keep-alive")
-		w.Header().Set("X-Accel-Buffering", "no") // disable nginx proxy buffering
-		w.WriteHeader(http.StatusOK)
-	}
-
-	if response.Event != "" {
-		if _, err := fmt.Fprintf(w, "event: %s\n", response.Event); err != nil {
-			return err
-		}
-	}
-	if _, err := fmt.Fprintf(w, "data: %v\n\n", response.Data); err != nil {
+	data, err := encodeSSEData(response.Data)
+	if err != nil {
 		return err
 	}
-	w.Flush()
-	return nil
+
+	return writeSSEvent(c, response.Event, data)
 }
 
+// ErrorResponseSSEvent writes an "error" event whose data is the same JSON body as ErrorResponse
 func ErrorResponseSSEvent(c echo.Context, err error) error {
-	errorID := uuid.New().String()
-
 	if err == nil {
 		return nil
 	}
 
+	payload, marshalErr := json.Marshal(buildErrorResponse(c, err))
+	if marshalErr != nil {
+		return marshalErr
+	}
+
+	return writeSSEvent(c, "error", string(payload))
+}
+
+func encodeSSEData(data any) (string, error) {
+	switch value := data.(type) {
+	case nil:
+		return "", nil
+	case string:
+		return value, nil
+	case []byte:
+		return string(value), nil
+	default:
+		encoded, err := json.Marshal(value)
+		if err != nil {
+			return "", err
+		}
+		return string(encoded), nil
+	}
+}
+
+func writeSSEvent(c echo.Context, event string, data string) error {
 	w := c.Response()
 	if !w.Committed {
 		w.Header().Set(echo.HeaderContentType, "text/event-stream")
@@ -144,58 +162,21 @@ func ErrorResponseSSEvent(c echo.Context, err error) error {
 		w.WriteHeader(http.StatusOK)
 	}
 
-	fmt.Fprintf(w, "event: %s\n", "error")
-
-	// Handle Echo's built-in HTTPError (e.g. 404, 405, etc)
-	if he, ok := err.(*echo.HTTPError); ok {
-		errorResponse := ErrorResponseConfig{
-			Code:    he.Code,
-			Message: http.StatusText(he.Code),
-			Error: map[string]any{
-				"id": errorID,
-				"type": "HTTP_ERROR",
-				"code": he.Code,
-				"data": he.Message,
-			},
-		}
-
-		errPayload, _ := json.Marshal(errorResponse)
-		
-		fmt.Fprintf(w, "data: %s\n\n", map[string]string{
-			"error": string(errPayload),
-		})
-		w.Flush()
-		return nil
+	var frame strings.Builder
+	// A newline in the event name would start a new field, so it is removed
+	if event = strings.NewReplacer("\r", "", "\n", "").Replace(event); event != "" {
+		frame.WriteString("event: " + event + "\n")
 	}
 
-	// Handle custom application exceptions
-	exceptions, ok := err.(*Exceptions);
-	if !ok {
-		errorResponse := internalServerErrorResponse(c, err, errorID)
-
-		errPayload, _ := json.Marshal(errorResponse)
-		fmt.Fprintf(w, "data: %s\n\n", map[string]string{
-			"error": string(errPayload),
-		})
-		w.Flush()
-		return nil
+	// A raw newline would end the data field, so every line gets its own "data:" prefix
+	for _, line := range strings.Split(strings.ReplaceAll(data, "\r\n", "\n"), "\n") {
+		frame.WriteString("data: " + strings.TrimSuffix(line, "\r") + "\n")
 	}
+	frame.WriteString("\n")
 
-	exceptionResponse := ErrorResponseConfig{
-		Code: exceptions.Code,
-		Message: exceptions.Error(),
-		Error: map[string]any{
-			"id": errorID,
-			"type": exceptions.Type,
-			"code": exceptions.Code,
-			"data": exceptions.ErrorObject,
-		},
+	if _, err := w.Write([]byte(frame.String())); err != nil {
+		return err
 	}
-
-	errPayload, _ := json.Marshal(exceptionResponse)
-	fmt.Fprintf(w, "data: %s\n\n", map[string]string{
-		"error": string(errPayload),
-	})
 	w.Flush()
 	return nil
 }
