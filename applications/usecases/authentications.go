@@ -1,6 +1,7 @@
 package usecases
 
 import (
+	"context"
 	"go-serviceboilerplate/commons/models"
 	"go-serviceboilerplate/infrastructures/repositories"
 	"go-serviceboilerplate/infrastructures/security"
@@ -16,8 +17,8 @@ func NewAuthenticationsUsecase(authenticationsRepository *repositories.Authentic
 	return &AuthenticationsUsecase{authenticationsRepository, tokenManagerSecurity, passwordHashSecurity}
 }
 
-func (r *AuthenticationsUsecase) VerifyClient(clientID string) error {
-	clientIDerr := r.AuthenticationsRepository.VerifyClientID(clientID)
+func (r *AuthenticationsUsecase) VerifyClient(ctx context.Context, clientID string) error {
+	clientIDerr := r.AuthenticationsRepository.VerifyClientID(ctx, clientID)
 	if(clientIDerr != nil) {
 		return clientIDerr
 	}
@@ -25,8 +26,8 @@ func (r *AuthenticationsUsecase) VerifyClient(clientID string) error {
 	return nil
 }
 
-func (r *AuthenticationsUsecase) VerifySecretToken(secretToken string) error {
-	secretTokenErr := r.AuthenticationsRepository.VerifySecretToken(secretToken)
+func (r *AuthenticationsUsecase) VerifySecretToken(ctx context.Context, secretToken string) error {
+	secretTokenErr := r.AuthenticationsRepository.VerifySecretToken(ctx, secretToken)
 	if(secretTokenErr != nil) {
 		return secretTokenErr
 	}
@@ -34,8 +35,8 @@ func (r *AuthenticationsUsecase) VerifySecretToken(secretToken string) error {
 	return nil
 }
 
-func (r *AuthenticationsUsecase) VerifyAccessToken(bearerToken string) (*models.AccessTokenClaims, error ){
-	authToken, authTokenErr := r.AuthenticationsRepository.VerifyAuthToken(bearerToken)
+func (r *AuthenticationsUsecase) VerifyAccessToken(ctx context.Context, bearerToken string) (*models.AccessTokenClaims, error ){
+	authToken, authTokenErr := r.AuthenticationsRepository.VerifyAuthToken(ctx, bearerToken)
 	if(authTokenErr != nil) {
 		return nil, authTokenErr
 	}
@@ -48,8 +49,8 @@ func (r *AuthenticationsUsecase) VerifyAccessToken(bearerToken string) (*models.
 	return userClaim, nil
 }
 
-func (r *AuthenticationsUsecase) VerifyRefreshToken(bearerToken string) (*models.RefreshTokenClaims, error ){
-	authToken, authTokenErr := r.AuthenticationsRepository.VerifyAuthToken(bearerToken)
+func (r *AuthenticationsUsecase) VerifyRefreshToken(ctx context.Context, bearerToken string) (*models.RefreshTokenClaims, error ){
+	authToken, authTokenErr := r.AuthenticationsRepository.VerifyAuthToken(ctx, bearerToken)
 	if(authTokenErr != nil) {
 		return nil, authTokenErr
 	}

@@ -32,7 +32,6 @@ This document provides context for AI agents to understand the structure and con
 │   └── agents/prompts/                      # LLM prompt templates, read via utils.GetAgentPromptFileContent
 ├── commons/
 │   ├── models/
-│   │   ├── app.go                           # BaseRequest, BasePayload (carry context.Context)
 │   │   ├── authentications.go               # Token claims, auth request/response types
 │   │   ├── configs.go                       # ENVConfig and every *Config struct
 │   │   ├── constant.go                      # Headers, filter operators, LLM providers, shared errors (ErrCacheMiss, ErrMessageBrokerClosed)
@@ -40,6 +39,7 @@ This document provides context for AI agents to understand the structure and con
 │   │   └── queries.go                       # Queries, FilterQueries, QueriesOptions, BaseQueriesRequest
 │   └── utils/
 │       ├── agents.go                        # Prompt file loading and {{placeholder}} replacement
+│       ├── context.go                       # ctx helpers: request ID, token claims, SetRequestContext
 │       ├── exceptions.go                    # Custom error types (ClientError, NotFoundError, ...)
 │       ├── general.go                       # Small helpers (GenerateTokenID, IsSafeSpecialChar)
 │       ├── http.go                          # SuccessResponse, ErrorResponse, HttpErrorHandler
@@ -76,7 +76,8 @@ This document provides context for AI agents to understand the structure and con
         ├── api/<domain>/                    # handler.go + route.go per domain
         ├── middlewares/
         │   ├── authentications/handler.go   # VerifyClient, VerifyAuthentication, VerifyAuthenticationWithServiceToken
-        │   └── logger/handler.go            # Request logging via SlogLogger
+        │   ├── logger/handler.go            # Request logging via SlogLogger (method, uri, status, latency, request_id)
+        │   └── request_context/handler.go   # Request ID + per-request timeout on the request ctx
         └── validator/handler.go             # go-playground/validator wrapper for Echo
 ```
 
@@ -106,6 +107,8 @@ interfaces → applications → infrastructures → commons
 - **Every config field has a comment** stating what it does and its env var (with unit and default). Keep this up to date when adding fields.
 - **Logging uses slog key/value pairs**: `configs.Logger.Info("Message", "key", value)`. Never pass printf-style format strings or a bare `err` — use `"error", err`.
 - **Infrastructure constructors fail fast**: on a bad config or failed connection, call `configs.Logger.Fatal(...)` at startup instead of returning a broken client.
+- **Pass `ctx context.Context` as the first parameter** of every use case, repository and I/O method — see "Context" below.
+- **File and folder names with more than one word use `_`** (e.g. `message_broker.go`, `request_context/`). Go package names follow the folder name.
 - **Wrap returned errors with context** using `fmt.Errorf("<component> <operation> %q: %w", key, err)` so callers can still use `errors.Is`/`errors.As`.
 
 ---
@@ -120,7 +123,6 @@ interfaces → applications → infrastructures → commons
   - `authentications.go` — `AccessTokenClaims`, `RefreshTokenClaims`, auth request/response types
   - `queries.go` — `Queries`, `FilterQueries`, `QueriesOptions`, `BaseQueriesRequest`
   - `constant.go` — custom HTTP headers (`X-Client-Id`, etc.), filter operators, `LLMProvider` values, `AgentsPromptDirectory`, `ErrCacheMiss`
-  - `app.go` — `BaseRequest` / `BasePayload` carrying `context.Context`
 
 ### `commons/utils/`
 - Stateless helper functions used across layers.
@@ -208,15 +210,54 @@ interfaces → applications → infrastructures → commons
 ### `interfaces/http/middlewares/`
 - **`authentications`**: Provides `VerifyClient` (checks `X-Client-Id` header — applied globally), `VerifyAuthentication` (checks Bearer JWT), and `VerifyAuthenticationWithServiceToken` (checks both `X-Service-Token` and Bearer JWT).
 - Apply `VerifyAuthentication` or `VerifyAuthenticationWithServiceToken` to route groups that require auth, not globally.
-- Authenticated user claims are stored in Echo context with key `models.ContextUserClaim`. Retrieve via `c.Get(models.ContextUserClaim).(*models.AccessTokenClaims)`.
-- **`logger`**: `NewSlogLoggerMiddleware(configs)` logs every request through `SlogLogger`.
+- Authenticated user claims are stored in both places: Echo context (`c.Get(models.ContextUserClaim).(*models.AccessTokenClaims)`, handlers only) and the request `ctx` (`utils.AccessTokenClaimsFromContext(ctx)`, any layer).
+- **`logger`**: `NewSlogLoggerMiddleware(configs)` logs every request through `SlogLogger` with the request ID.
+- **`request_context`**: `NewRequestIDMiddleware()` (registered first) and `NewRequestTimeoutMiddleware(configs)` (`REQUEST_TIMEOUT`). Middleware order in `main.go` matters: request ID → logger → recover → CORS → timeout → client verification.
+
+---
+
+## Context (`context.Context`)
+
+There are two different "contexts" in this codebase:
+
+| | `echo.Context` (`c`) | `context.Context` (`ctx`) |
+|---|---|---|
+| What it is | Echo's wrapper around the HTTP request/response | Go's standard cancellation + request-scoped values |
+| Where it is used | **Only** in handlers and middlewares (`interfaces/http/`) | Everywhere below the handler: use cases, repositories, infrastructure |
+| Get it from | Echo passes it to handlers | `ctx := c.Request().Context()` in a handler |
+
+**Rules**
+
+1. Handlers read `ctx := c.Request().Context()` and pass `ctx` — never `c` — to use cases.
+2. Every use case, repository and infrastructure method that may do I/O takes `ctx context.Context` as its **first parameter** and passes it on to every call: `db.WithContext(ctx)`, Redis, MongoDB, S3, STOMP `Publish`, outgoing HTTP (`http.NewRequestWithContext`), LLM calls. Pure CPU helpers (JWT, bcrypt, validation) do not need it.
+3. Never store a `ctx` in a struct field, and never pass `nil` — use `context.Background()` in tests and at startup.
+4. Request-scoped values travel in `ctx`, not in function parameters or globals. Read them with the helpers in `commons/utils/context.go`:
+   - `utils.RequestIDFromContext(ctx)`
+   - `utils.AccessTokenClaimsFromContext(ctx)` / `utils.RefreshTokenClaimsFromContext(ctx)` (set by the auth middleware; `c.Get(models.ContextUserClaim)` still works in handlers)
+   - New keys go in `commons/models/constant.go` as `models.ContextKey` constants, with `With…` / `…FromContext` helpers in `commons/utils/context.go`.
+5. Log with `configs.Logger.InfoContext(ctx, ...)` (and `WarnContext`/`ErrorContext`/`DebugContext`) whenever a `ctx` is available — the logger adds `request_id` automatically.
+6. Check for cancellation in long loops: `if err := ctx.Err(); err != nil { return err }`.
+7. To keep work running after the request ends (e.g. a fire-and-forget goroutine), use `context.WithoutCancel(ctx)` — it keeps the request ID but is not cancelled with the request.
+
+**Where contexts come from**
+
+| Entry point | ctx | Cancelled when | Carries |
+|---|---|---|---|
+| HTTP request | `c.Request().Context()` | client disconnects, or `REQUEST_TIMEOUT` passes (→ 503) | request ID, token claims (after auth middleware) |
+| STOMP message handler | `ctx` argument | never (handler finishes even during shutdown) | request ID = `X-Request-Id` header from the publisher, else the broker `message-id` |
+| Background job | `appCtx` in `main.go` | SIGINT/SIGTERM | — |
+| Startup / tests | `context.Background()` | never | — |
+
+The request ID comes from the incoming `X-Request-Id` header (or is generated), is returned in the response header, appears on every log line, and is forwarded as an `X-Request-Id` header by STOMP `Publish` — so one ID follows a request across services and through the message broker.
+
+**Shutdown** — on SIGINT/SIGTERM `main.go` stops accepting requests, waits up to `SHUTDOWN_TIMEOUT` for in-flight requests (their contexts are *not* cancelled by the signal), then closes resources (`dbInstances.Close()`, and any broker/Redis/Mongo instance you wire in). Add new resources to that shutdown sequence.
 
 ---
 
 ## Adding a New Domain (Step-by-Step)
 
 1. **Model** — add request/response structs and DB model to `commons/models/<domain>.go`
-2. **Repository** — create `infrastructures/repositories/<domain>.go`, implement data access via `dbInstances.MainDB` (GORM)
+2. **Repository** — create `infrastructures/repositories/<domain>.go`, implement data access via `dbInstances.MainDB.WithContext(ctx)` (GORM); every method takes `ctx context.Context` first
 3. **Migration** — if the DB model needs auto-migration, pass it to `postgres.NewPostgresInstance(...)` in `infrastructures/databases/handler.go`
 4. **Use case** — create `applications/usecases/<domain>.go`, inject repository, implement business logic
 5. **Handler** — create `interfaces/http/api/<domain>/handler.go` + `route.go`
@@ -337,6 +378,12 @@ See `.env_example` for examples. Durations are integers in the unit shown.
 | `JWT_REFRESH_SECRET` | No | Secret for signing refresh tokens |
 | `ACCESS_TOKEN_EXPIRATION` | No | Minutes; default 30 |
 | `REFRESH_TOKEN_EXPIRATION` | No | Minutes; default 10080 (7 days) |
+| `REQUEST_TIMEOUT` | No | Seconds; deadline on each request ctx (→ 503); default 30; `0` disables |
+| `SHUTDOWN_TIMEOUT` | No | Seconds to wait for in-flight requests on shutdown; default 10 |
+| `SERVER_READ_HEADER_TIMEOUT` | No | Seconds to receive request headers (slowloris protection); default 10; always enabled |
+| `SERVER_READ_TIMEOUT` | No | Seconds to receive the whole request incl. body; disabled by default |
+| `SERVER_WRITE_TIMEOUT` | No | Seconds until the response is fully written; cuts off SSE streams; disabled by default |
+| `SERVER_IDLE_TIMEOUT` | No | Seconds an idle keep-alive connection stays open; disabled by default (falls back to `SERVER_READ_TIMEOUT`) |
 
 **Postgres** — main DB uses prefix `DB_`; additional DBs use their own prefix with the same keys
 

@@ -18,7 +18,8 @@ func NewSystemHandler(systemUsecase *usecases.SystemUsecase ) *SystemHandler {
 }
 
 func (h *SystemHandler) GetSystemInfo(c echo.Context) error {
-	systemInfo := h.systemUsecase.GetSystemInfo()
+	ctx := c.Request().Context()
+	systemInfo := h.systemUsecase.GetSystemInfo(ctx)
 
 	return utils.SuccessResponse(c, utils.SuccessResponseConfig{
 		Code:    http.StatusOK,

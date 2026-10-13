@@ -25,6 +25,24 @@ type ApplicationConfig struct {
 	AccessTokenExpiration 	time.Duration
 	// RefreshTokenExpiration is the refresh token lifetime (env: REFRESH_TOKEN_EXPIRATION in minutes, default 7 days)
 	RefreshTokenExpiration 	time.Duration
+	// RequestTimeout is the deadline set on every HTTP request's context. Database, cache and broker calls made with that ctx
+	// are cancelled when it passes, and the request returns 503. Zero disables it (env: REQUEST_TIMEOUT in seconds, default 30)
+	RequestTimeout 			time.Duration
+	// ShutdownTimeout is how long the server waits for in-flight requests to finish on SIGINT/SIGTERM before forcing exit.
+	// Zero waits indefinitely (env: SHUTDOWN_TIMEOUT in seconds, default 10)
+	ShutdownTimeout 		time.Duration
+	// ServerReadHeaderTimeout closes connections that do not send their request headers in time (slowloris protection).
+	// Always enabled, as recommended by gosec G112 (env: SERVER_READ_HEADER_TIMEOUT in seconds, default 10)
+	ServerReadHeaderTimeout time.Duration
+	// ServerReadTimeout limits reading the whole request including the body. Large uploads on slow networks can hit it.
+	// Zero disables it (env: SERVER_READ_TIMEOUT in seconds, default disabled)
+	ServerReadTimeout 		time.Duration
+	// ServerWriteTimeout limits the time from reading the request headers until the response is fully written.
+	// It cuts off streaming responses (SSE), so leave it disabled when streaming. Zero disables it (env: SERVER_WRITE_TIMEOUT in seconds, default disabled)
+	ServerWriteTimeout 		time.Duration
+	// ServerIdleTimeout closes keep-alive connections idle between requests. Zero falls back to ServerReadTimeout,
+	// and no limit when that is also zero (env: SERVER_IDLE_TIMEOUT in seconds, default disabled)
+	ServerIdleTimeout 		time.Duration
 	// CORSConfig is applied to every route. Origins come from ALLOWED_ORIGINS (comma separated, default "*")
 	CORSConfig				middleware.CORSConfig
 }

@@ -1,6 +1,7 @@
 package repositories
 
 import (
+	"context"
 	"go-serviceboilerplate/infrastructures/databases"
 )
 
@@ -12,7 +13,7 @@ func NewSystemRepositories(dbInstances *databases.DatabaseInstance) *SystemRepos
 	return &SystemRepositories{dbInstances}
 }
 
-func (s *SystemRepositories) GetSystemInfo() map[string]string {
+func (s *SystemRepositories) GetSystemInfo(ctx context.Context) map[string]string {
 	data := map[string]string{
 		"app_name": "Go Service Boilerplate",
 		"version":  "1.0.0",

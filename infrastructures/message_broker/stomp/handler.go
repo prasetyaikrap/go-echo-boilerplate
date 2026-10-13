@@ -175,9 +175,16 @@ func (s *StompInstance) Publish(ctx context.Context, destination string, payload
 		return fmt.Errorf("stomp %s publish %q: encode: %w", s.Name, destination, err)
 	}
 
-	opts := make([]func(*frame.Frame) error, 0, len(headers))
+	opts := make([]func(*frame.Frame) error, 0, len(headers)+1)
 	for key, value := range headers {
 		opts = append(opts, goStomp.SendOpt.Header(key, value))
+	}
+
+	// Propagate the caller's request ID so the consumer's logs can be traced back to the originating request
+	if _, exists := headers[models.XRequestIDHeader]; !exists {
+		if requestID := utils.RequestIDFromContext(ctx); requestID != "" {
+			opts = append(opts, goStomp.SendOpt.Header(models.XRequestIDHeader, requestID))
+		}
 	}
 
 	conn := s.currentConn()
@@ -287,28 +294,37 @@ func (s *StompInstance) receive(stompSub *goStomp.Subscription, handler models.B
 }
 
 func (s *StompInstance) handleMessage(msg *goStomp.Message, handler models.BrokerMessageHandler) {
-	if err := runHandler(handler, toBrokerMessage(msg)); err != nil {
-		s.configs.Logger.Warn("STOMP message handler failed, message rejected", "name", s.Name, "destination", msg.Destination, "error", err)
+	brokerMessage := toBrokerMessage(msg)
+
+	// Each message gets its own ctx. It is not cancelled by Close, so in-flight handlers can finish their work
+	requestID := brokerMessage.Headers[models.XRequestIDHeader]
+	if requestID == "" {
+		requestID = brokerMessage.Headers[frame.MessageId]
+	}
+	ctx := utils.WithRequestID(context.Background(), requestID)
+
+	if err := runHandler(ctx, handler, brokerMessage); err != nil {
+		s.configs.Logger.WarnContext(ctx, "STOMP message handler failed, message rejected", "name", s.Name, "destination", msg.Destination, "error", err)
 
 		if nackErr := msg.Conn.Nack(msg); nackErr != nil {
-			s.configs.Logger.Error("STOMP nack failed", "name", s.Name, "destination", msg.Destination, "error", nackErr)
+			s.configs.Logger.ErrorContext(ctx, "STOMP nack failed", "name", s.Name, "destination", msg.Destination, "error", nackErr)
 		}
 		return
 	}
 
 	if ackErr := msg.Conn.Ack(msg); ackErr != nil {
-		s.configs.Logger.Error("STOMP ack failed", "name", s.Name, "destination", msg.Destination, "error", ackErr)
+		s.configs.Logger.ErrorContext(ctx, "STOMP ack failed", "name", s.Name, "destination", msg.Destination, "error", ackErr)
 	}
 }
 
-func runHandler(handler models.BrokerMessageHandler, msg models.BrokerMessage) (err error) {
+func runHandler(ctx context.Context, handler models.BrokerMessageHandler, msg models.BrokerMessage) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("handler panic: %v", r)
 		}
 	}()
 
-	return handler(context.Background(), msg)
+	return handler(ctx, msg)
 }
 
 func toBrokerMessage(msg *goStomp.Message) models.BrokerMessage {

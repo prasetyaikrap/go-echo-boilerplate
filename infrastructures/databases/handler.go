@@ -18,3 +18,13 @@ func NewDatabaseInstance(configs *configurations.Configs) *DatabaseInstance {
 
 	return &DatabaseInstance{MainDB: mainDB}
 }
+
+// Close closes every database connection pool. Call it on shutdown after the HTTP server has stopped
+func (d *DatabaseInstance) Close() error {
+	sqlDB, err := d.MainDB.DB()
+	if err != nil {
+		return err
+	}
+
+	return sqlDB.Close()
+}

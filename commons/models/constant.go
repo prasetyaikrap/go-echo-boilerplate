@@ -12,8 +12,23 @@ var (
 	XServiceNameHeader = "X-Service-Name"
 	XUserIdHeader = "X-User-Id"
 	AuthorizationHeader = "Authorization"
+	// XRequestIDHeader carries the request ID across services (HTTP) and through message brokers (message header)
+	XRequestIDHeader = "X-Request-Id"
 
+	// ContextUserClaim is the echo.Context key for token claims (c.Get). Below the HTTP layer use utils.AccessTokenClaimsFromContext instead
 	ContextUserClaim = "user_claim"
+)
+
+// ContextKey is the type for values stored in a context.Context. A dedicated type prevents collisions with keys from other packages
+type ContextKey string
+
+const (
+	// ContextKeyRequestID holds the request ID (X-Request-Id), or the message ID for broker messages. Added to every log line
+	ContextKeyRequestID ContextKey = "request_id"
+	// ContextKeyAccessTokenClaims holds the verified *AccessTokenClaims of the caller
+	ContextKeyAccessTokenClaims ContextKey = "access_token_claims"
+	// ContextKeyRefreshTokenClaims holds the verified *RefreshTokenClaims when the request renews a token
+	ContextKeyRefreshTokenClaims ContextKey = "refresh_token_claims"
 )
 
 const (

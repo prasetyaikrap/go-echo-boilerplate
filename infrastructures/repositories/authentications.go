@@ -1,6 +1,7 @@
 package repositories
 
 import (
+	"context"
 	"errors"
 	"go-serviceboilerplate/commons/utils"
 	"go-serviceboilerplate/infrastructures/configurations"
@@ -18,7 +19,7 @@ func NewAuthenticationsRepositories(dbInstances *databases.DatabaseInstance, con
 	return &AuthenticationsRepositories{dbInstances, configs}
 }
 
-func (s AuthenticationsRepositories) VerifyClientID(clientID string) error {
+func (s AuthenticationsRepositories) VerifyClientID(ctx context.Context, clientID string) error {
 	envConfigs := s.Configs.Envs
 	isAllClientIDsAllowed := slices.Contains(envConfigs.Application.AllowedCleintIDs, "*")
 	isClientIDAllowed := slices.Contains(envConfigs.Application.AllowedCleintIDs, clientID)
@@ -30,7 +31,7 @@ func (s AuthenticationsRepositories) VerifyClientID(clientID string) error {
 	return nil
 }
 
-func (s AuthenticationsRepositories) VerifySecretToken(token string) error {
+func (s AuthenticationsRepositories) VerifySecretToken(ctx context.Context, token string) error {
 	envConfigs := s.Configs.Envs
 	if token == "" ||  token != envConfigs.Application.SecretToken {
 		return utils.NewAuthenticationError(errors.New("Service not allowed"))
@@ -39,7 +40,7 @@ func (s AuthenticationsRepositories) VerifySecretToken(token string) error {
 	return nil
 }
 
-func (s AuthenticationsRepositories) VerifyAuthToken(bearerToken string) (string, error) {
+func (s AuthenticationsRepositories) VerifyAuthToken(ctx context.Context, bearerToken string) (string, error) {
 	if !strings.HasPrefix(bearerToken, "Bearer ") {
 		return "", utils.NewAuthenticationError(errors.New("invalid Authorization format"))
 	}

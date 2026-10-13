@@ -1,6 +1,9 @@
 package usecases
 
-import "go-serviceboilerplate/infrastructures/repositories"
+import (
+	"context"
+	"go-serviceboilerplate/infrastructures/repositories"
+)
 
 type SystemUsecase struct {
 	systemRepository *repositories.SystemRepositories
@@ -10,8 +13,8 @@ func NewSystemUsecase(systemRepository *repositories.SystemRepositories) *System
 	return &SystemUsecase{systemRepository}
 }
 
-func (r *SystemUsecase) GetSystemInfo() map[string]string {
-	data := r.systemRepository.GetSystemInfo()
+func (r *SystemUsecase) GetSystemInfo(ctx context.Context) map[string]string {
+	data := r.systemRepository.GetSystemInfo(ctx)
 
 	return data
 }

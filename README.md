@@ -36,7 +36,6 @@ A production-ready starter template for building backend REST API services using
 │
 ├── commons/
 │   ├── models/                      # Shared data models and types
-│   │   ├── app.go                   # Base request/payload types
 │   │   ├── authentications.go       # JWT claims, auth request/response models
 │   │   ├── configs.go               # All config structs (app, Postgres, Redis, STOMP, S3, LLM)
 │   │   ├── constant.go              # Global constants and shared errors
@@ -44,6 +43,7 @@ A production-ready starter template for building backend REST API services using
 │   │   └── queries.go               # Query/filter/sort models
 │   └── utils/                       # Shared utility functions
 │       ├── agents.go                # LLM prompt file loading and templating
+│       ├── context.go               # context.Context helpers (request ID, token claims)
 │       ├── exceptions.go            # Custom error types (ClientError, NotFoundError, etc.)
 │       ├── general.go               # General helpers
 │       ├── http.go                  # HTTP response helpers (SuccessResponse, ErrorResponse)
@@ -89,7 +89,8 @@ A production-ready starter template for building backend REST API services using
         │       └── route.go         # Route registration (RegisterRoutes)
         ├── middlewares/
         │   ├── authentications/     # Client ID and JWT auth middlewares
-        │   └── logger/              # Request/response logging middleware
+        │   ├── logger/              # Request/response logging middleware
+        │   └── request_context/     # Request ID and per-request timeout
         └── validator/               # Custom Echo request validator
 ```
 
@@ -135,6 +136,10 @@ JWT_ACCESS_SECRET=your-access-secret
 JWT_REFRESH_SECRET=your-refresh-secret
 ACCESS_TOKEN_EXPIRATION=15         # Minutes
 REFRESH_TOKEN_EXPIRATION=43200     # Minutes (30 days)
+REQUEST_TIMEOUT=30                 # Seconds; deadline for each request (0 disables)
+SHUTDOWN_TIMEOUT=10                # Seconds to wait for in-flight requests on shutdown
+SERVER_READ_HEADER_TIMEOUT=10      # Seconds to receive request headers (slowloris protection)
+# Optional connection timeouts, disabled unless set: SERVER_READ_TIMEOUT, SERVER_WRITE_TIMEOUT, SERVER_IDLE_TIMEOUT
 
 # PostgreSQL
 DB_DSN="host=localhost user=postgres password=postgres dbname=mydb port=5432 sslmode=disable TimeZone=UTC"
@@ -209,6 +214,42 @@ swag init
 |---|---|---|---|
 | GET | `/system` | Service health / info | Client ID only |
 
+## Context and Request Tracing
+
+`echo.Context` (`c`) stays in handlers and middlewares. Everything below them receives Go's `context.Context` as the first parameter:
+
+```go
+// Handler — the only layer that sees echo.Context
+func (h *OrdersHandler) GetOrders(c echo.Context) error {
+    ctx := c.Request().Context()
+    orders, err := h.ordersUsecase.GetOrders(ctx, c.QueryParam("status"))
+    ...
+}
+
+// Repository — gets ctx, passes it to every I/O call
+func (r *OrdersRepositories) GetOrders(ctx context.Context, status string) ([]models.Order, error) {
+    claims, _ := utils.AccessTokenClaimsFromContext(ctx) // set by the auth middleware
+
+    var orders []models.Order
+    err := r.dbInstances.MainDB.WithContext(ctx).
+        Where("user_id = ? AND status = ?", claims.Subject, status).
+        Find(&orders).Error
+
+    r.configs.Logger.InfoContext(ctx, "Orders loaded", "count", len(orders)) // includes request_id
+    return orders, err
+}
+```
+
+What the request `ctx` gives you:
+
+- **Cancellation** — database, cache and broker calls stop when the client disconnects or `REQUEST_TIMEOUT` passes (the request returns 503).
+- **Request ID** — taken from the incoming `X-Request-Id` header or generated, returned in the response, added to every log line, and forwarded to STOMP consumers. One ID follows a request across services.
+- **User claims** — `utils.AccessTokenClaimsFromContext(ctx)` on authenticated routes.
+
+Connections that don't send their request headers within `SERVER_READ_HEADER_TIMEOUT` (default 10s) are closed. `SERVER_READ_TIMEOUT`, `SERVER_WRITE_TIMEOUT` and `SERVER_IDLE_TIMEOUT` are available but disabled by default — they are mostly needed when the service is exposed directly rather than behind a reverse proxy, and `SERVER_WRITE_TIMEOUT` cuts off streaming (SSE) responses.
+
+On SIGINT/SIGTERM the server stops accepting requests and waits up to `SHUTDOWN_TIMEOUT` for in-flight ones before closing the database. See `instruction.md` for the full rules.
+
 ## Request Headers
 
 | Header | Description |
@@ -217,6 +258,7 @@ swag init
 | `Authorization` | `Bearer <token>` — required for protected routes |
 | `X-Service-Token` | Service-to-service secret token |
 | `X-Renew-Token` | Set to `"true"` to use a refresh token instead of access token |
+| `X-Request-Id` | Optional — reused as the request ID for tracing; generated when absent and always returned in the response |
 
 ## Error Response Format
 
@@ -359,23 +401,13 @@ import "go-serviceboilerplate/infrastructures/message_broker/stomp"
 mainStomp := stomp.NewStompInstance(configs, configs.Envs.MainStomp)
 ```
 
-`Close()` waits for in-flight message handlers before disconnecting, so call it on shutdown. `e.Logger.Fatal(e.Start(...))` exits without running deferred calls, so use a graceful shutdown instead:
+`Close()` waits for in-flight message handlers before disconnecting. Add it to the shutdown sequence at the end of `main.go`, after `e.Shutdown`:
 
 ```go
-go func() {
-    if err := e.Start(fmt.Sprintf(":%s", configs.Envs.Application.Port)); err != nil && !errors.Is(err, http.ErrServerClosed) {
-        e.Logger.Fatal(err)
-    }
-}()
-
-quit := make(chan os.Signal, 1)
-signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
-<-quit
-
-ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-defer cancel()
-_ = e.Shutdown(ctx)    // stop accepting HTTP requests
-_ = mainStomp.Close()  // finish in-flight messages, then disconnect
+if err := e.Shutdown(shutdownCtx); err != nil { ... }
+if err := mainStomp.Close(); err != nil {
+    configs.Logger.Error("STOMP close failed", "error", err)
+}
 ```
 
 #### 4. Publish from a repository
