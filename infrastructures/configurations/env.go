@@ -42,7 +42,7 @@ func GetENVConfig() *models.ENVConfig {
 			CORSConfig: middleware.CORSConfig{
 				AllowOrigins:     GetAllowedOrigins(),
 				AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
-				AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAuthorization, models.XClientIdHeader, models.XServiceTokenHeader, models.XUserIdHeader, models.XRenewTokenHeader, echo.HeaderXRequestID},
+				AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAuthorization, models.XClientIdHeader, models.XClientVersionHeader, models.XServiceTokenHeader, models.XUserIdHeader, models.XRenewTokenHeader, echo.HeaderXRequestID},
 				ExposeHeaders:    []string{echo.HeaderXRequestID},
 				AllowCredentials: true,
 			  },

@@ -3,6 +3,7 @@ package configurations
 import (
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -92,3 +93,17 @@ func TestGetPostgresEnvConfigUsesPrefix(t *testing.T) {
 }
 
 func ptr(s string) *string { return &s }
+
+// Headers the frontend sends on every request must pass the browser's CORS preflight
+func TestCORSAllowsFrontendHeaders(t *testing.T) {
+	t.Setenv("PORT", "3000")
+	t.Setenv("CLIENT_ID", "TEST")
+
+	allowed := GetENVConfig().Application.CORSConfig.AllowHeaders
+
+	for _, header := range []string{"X-Client-Id", "X-Client-Version", "X-Renew-Token", "Authorization", "Content-Type", "X-Request-Id"} {
+		if !slices.Contains(allowed, header) {
+			t.Errorf("CORS AllowHeaders is missing %q", header)
+		}
+	}
+}

@@ -311,6 +311,7 @@ spec:
 | Header | Description |
 |---|---|
 | `X-Client-Id` | Required on every request — identifies the calling client |
+| `X-Client-Version` | Optional — the client app version, allowed through CORS for the frontend |
 | `Authorization` | `Bearer <token>` — required for protected routes |
 | `X-Service-Token` | Service-to-service secret token |
 | `X-Renew-Token` | Set to `"true"` to use a refresh token instead of access token |

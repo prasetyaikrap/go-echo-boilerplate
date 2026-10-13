@@ -6,6 +6,7 @@ import (
 
 var (
 	XClientIdHeader	= "X-Client-Id"
+	XClientVersionHeader = "X-Client-Version"
 	XServiceTokenHeader = "X-Service-Token"
 	XRenewTokenHeader = "X-Renew-Token"
 	XProxyByHeader = "X-Proxy-By"
