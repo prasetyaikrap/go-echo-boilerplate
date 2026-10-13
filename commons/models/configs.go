@@ -1,6 +1,7 @@
 package models
 
 import (
+	"os"
 	"time"
 
 	"github.com/labstack/echo/v4/middleware"
@@ -50,26 +51,64 @@ type PostgresConfig struct {
 	AutoMigrate bool
 }
 
-// StorageS3Config holds the configuration for any S3-compatible storage (AWS S3, Cloudflare R2, MinIO, etc.)
-type StorageS3Config struct {
-	// Endpoint is empty for AWS S3. Cloudflare R2: "https://<account_id>.r2.cloudflarestorage.com" (env: S3_ENDPOINT)
+// MongoConfig holds the configuration for a single MongoDB database. Create one per database the service needs.
+// Loaded with GetMongoEnvConfig(name, prefix), e.g. prefix "MONGO_" reads MONGO_URI, MONGO_DATABASE, etc.
+type MongoConfig struct {
+	// Name identifies the database in logs and errors (e.g. "main", "audit")
+	Name 		string
+	// URI format: "mongodb://<user>:<password>@<host>:<port>/?authSource=admin". Use "mongodb+srv://" for Atlas / DNS seed lists (env: <prefix>URI, default "mongodb://localhost:27017")
+	URI 		string
+	// Database name every collection is read from and written to. Required when connecting (env: <prefix>DATABASE)
+	Database 	string
+	// MaxPoolSize is the maximum number of connections in the pool. Zero uses the driver default (100) (env: <prefix>MAX_POOL_SIZE)
+	MaxPoolSize 	uint64
+	// MinPoolSize is the number of connections kept open even when idle (env: <prefix>MIN_POOL_SIZE, default 0)
+	MinPoolSize 	uint64
+	// MaxConnIdleTime closes connections idle for longer than this. Zero means no limit (env: <prefix>MAX_CONN_IDLE_TIME in minutes)
+	MaxConnIdleTime 	time.Duration
+	// ConnectTimeout bounds connecting, server selection and the startup ping. Zero uses the driver defaults (30 seconds) (env: <prefix>CONNECT_TIMEOUT in seconds, default 10)
+	ConnectTimeout 	time.Duration
+	// AutoMigrate creates the indexes passed to NewMongoInstance on startup (env: <prefix>AUTO_MIGRATE, "true" to enable)
+	AutoMigrate 	bool
+}
+
+// S3Config holds the configuration for a single S3-compatible storage bucket (AWS S3, Cloudflare R2, MinIO, etc.).
+// Create one per bucket the service needs. Loaded with GetS3EnvConfig(name, prefix), e.g. prefix "S3_" reads S3_ENDPOINT, S3_BUCKET_NAME, etc.
+type S3Config struct {
+	// Name identifies the storage in logs and errors (e.g. "main", "media")
+	Name 				string
+	// Endpoint is empty for AWS S3. Cloudflare R2: "https://<account_id>.r2.cloudflarestorage.com" (env: <prefix>ENDPOINT)
 	Endpoint 			string
-	// Region for AWS S3 (e.g. "ap-southeast-1"). Cloudflare R2: "auto" (env: S3_REGION, default "auto")
+	// Region for AWS S3 (e.g. "ap-southeast-1"). Cloudflare R2: "auto" (env: <prefix>REGION, default "auto")
 	Region 				string
-	// AccessKeyID of the storage API credential (env: S3_ACCESS_KEY)
+	// AccessKeyID of the storage API credential (env: <prefix>ACCESS_KEY)
 	AccessKeyID 		string
-	// SecretAccessKey of the storage API credential (env: S3_SECRET_ACCESS_KEY)
+	// SecretAccessKey of the storage API credential (env: <prefix>SECRET_ACCESS_KEY)
 	SecretAccessKey 	string
-	// BucketName every object is stored in. Required when the storage is initialized (env: S3_BUCKET_NAME)
+	// BucketName every object is stored in. Required when the storage is initialized (env: <prefix>BUCKET_NAME)
 	BucketName 			string
-	// PublicHost is the base URL for public object links, e.g. "https://cdn.example.com" or an R2 "https://pub-xxx.r2.dev" (env: S3_PUBLIC_HOST)
+	// PublicHost is the base URL for public object links, e.g. "https://cdn.example.com" or an R2 "https://pub-xxx.r2.dev" (env: <prefix>PUBLIC_HOST)
 	PublicHost 	string
-	// BaseFolder is prepended to every object key, e.g. "uploads" stores "a.png" as "uploads/a.png" (env: S3_BASE_FOLDER)
+	// BaseFolder is prepended to every object key, e.g. "uploads" stores "a.png" as "uploads/a.png" (env: <prefix>BASE_FOLDER)
 	BaseFolder		string
-	// UsePathStyle is required by MinIO and some self-hosted storages. Keep false for AWS S3 and Cloudflare R2 (env: S3_USE_PATH_STYLE)
+	// UsePathStyle is required by MinIO and some self-hosted storages. Keep false for AWS S3 and Cloudflare R2 (env: <prefix>USE_PATH_STYLE)
 	UsePathStyle 	bool
-	// DefaultPresignExpire is used when a presign method is called with expireTime <= 0. Zero falls back to the SDK default (15 minutes) (env: S3_PRESIGN_EXPIRE in minutes, default 15)
+	// DefaultPresignExpire is used when a presign method is called with expireTime <= 0. Zero falls back to the SDK default (15 minutes) (env: <prefix>PRESIGN_EXPIRE in minutes, default 15)
 	DefaultPresignExpire 	time.Duration
+}
+
+// LocalStorageConfig holds the configuration for a single directory on the local filesystem (file cache, generated files, local config, etc.).
+// Create one per directory the service needs. Loaded with GetLocalStorageEnvConfig(name, prefix), e.g. prefix "LOCAL_STORAGE_" reads LOCAL_STORAGE_BASE_DIR, etc.
+// In Docker, mount a volume at BaseDir so the files survive container restarts.
+type LocalStorageConfig struct {
+	// Name identifies the storage in logs and errors (e.g. "main", "cache")
+	Name 		string
+	// BaseDir is the root directory. Every key is resolved inside it and can never escape it. Created on startup if missing (env: <prefix>BASE_DIR, default "storage")
+	BaseDir 	string
+	// DirMode is the permission for directories created by the storage (env: <prefix>DIR_MODE as octal, default "0755")
+	DirMode 	os.FileMode
+	// FileMode is the permission for files written by the storage (env: <prefix>FILE_MODE as octal, default "0644")
+	FileMode 	os.FileMode
 }
 
 // RedisConfig holds the configuration for a single Redis connection. Create one per Redis instance the service needs.
@@ -118,12 +157,16 @@ type ENVConfig struct {
 	Application 	ApplicationConfig
 	// MainDB is the primary Postgres database (env prefix: DB_)
 	MainDB		PostgresConfig
+	// MainMongo is the primary MongoDB database (env prefix: MONGO_)
+	MainMongo	MongoConfig
 	// MainRedis is the primary Redis instance (env prefix: REDIS_)
 	MainRedis	RedisConfig
 	// MainStomp is the primary STOMP message broker connection (env prefix: STOMP_)
 	MainStomp	StompConfig
-	// StorageS3 is the S3-compatible object storage (env prefix: S3_)
-	StorageS3	StorageS3Config
+	// MainS3 is the primary S3-compatible object storage (env prefix: S3_)
+	MainS3		S3Config
+	// MainLocalStorage is the primary local filesystem storage (env prefix: LOCAL_STORAGE_)
+	MainLocalStorage	LocalStorageConfig
 	// LLM selects and configures the LLM provider (env prefix: LLM_)
 	LLM 		LLMConfig
 }

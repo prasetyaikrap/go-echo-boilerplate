@@ -40,19 +40,11 @@ func GetENVConfig() *models.ENVConfig {
 			  },
 		},
 		MainDB: GetPostgresEnvConfig("main", "DB_"),
+		MainMongo: GetMongoEnvConfig("main", "MONGO_"),
 		MainRedis: GetRedisEnvConfig("main", "REDIS_"),
 		MainStomp: GetStompEnvConfig("main", "STOMP_"),
-		StorageS3: models.StorageS3Config{
-			Endpoint: GetEnv("S3_ENDPOINT", false, ""),
-			Region: GetEnv("S3_REGION", false, "auto"),
-			AccessKeyID: GetEnv("S3_ACCESS_KEY", false, ""),
-			SecretAccessKey: GetEnv("S3_SECRET_ACCESS_KEY", false, ""),
-			BucketName: GetEnv("S3_BUCKET_NAME", false, ""),
-			PublicHost: GetEnv("S3_PUBLIC_HOST", false, ""),
-			BaseFolder: GetEnv("S3_BASE_FOLDER", false, ""),
-			UsePathStyle: GetEnv("S3_USE_PATH_STYLE", false, "false") == "true",
-			DefaultPresignExpire: time.Duration(GetEnvInt("S3_PRESIGN_EXPIRE", false, 15)) * time.Minute,
-		},
+		MainS3: GetS3EnvConfig("main", "S3_"),
+		MainLocalStorage: GetLocalStorageEnvConfig("main", "LOCAL_STORAGE_"),
 		LLM: models.LLMConfig{
 			Provider:        models.LLMProvider(GetEnv("LLM_PROVIDER", false, "")),
 			Model:           GetEnv("LLM_MODEL", false, "llama3"),
@@ -78,6 +70,21 @@ func GetPostgresEnvConfig(name string, prefix string) models.PostgresConfig {
 		MaxConnLifeTime: time.Duration(GetEnvInt(prefix + "MAX_CONN_LIFETIME", false, 60)) * time.Minute,
 		LogLevel: GetEnv(prefix + "LOG_LEVEL", false, "info"),
 
+		AutoMigrate: GetEnv(prefix + "AUTO_MIGRATE", false, "false") == "true",
+	}
+}
+
+// GetMongoEnvConfig loads a MongoDB config from env vars sharing the same prefix,
+// e.g. prefix "AUDIT_MONGO_" reads AUDIT_MONGO_URI, AUDIT_MONGO_DATABASE, etc.
+func GetMongoEnvConfig(name string, prefix string) models.MongoConfig {
+	return models.MongoConfig{
+		Name: name,
+		URI: GetEnv(prefix + "URI", false, "mongodb://localhost:27017"),
+		Database: GetEnv(prefix + "DATABASE", false, ""),
+		MaxPoolSize: uint64(GetEnvInt(prefix + "MAX_POOL_SIZE", false, 0)),
+		MinPoolSize: uint64(GetEnvInt(prefix + "MIN_POOL_SIZE", false, 0)),
+		MaxConnIdleTime: time.Duration(GetEnvInt(prefix + "MAX_CONN_IDLE_TIME", false, 0)) * time.Minute,
+		ConnectTimeout: time.Duration(GetEnvInt(prefix + "CONNECT_TIMEOUT", false, 10)) * time.Second,
 		AutoMigrate: GetEnv(prefix + "AUTO_MIGRATE", false, "false") == "true",
 	}
 }
@@ -109,6 +116,49 @@ func GetStompEnvConfig(name string, prefix string) models.StompConfig {
 		ConnectTimeout: time.Duration(GetEnvInt(prefix + "CONNECT_TIMEOUT", false, 60)) * time.Second,
 		ReconnectInterval: time.Duration(GetEnvInt(prefix + "RECONNECT_INTERVAL", false, 15)) * time.Second,
 	}
+}
+
+// GetS3EnvConfig loads an S3-compatible storage config from env vars sharing the same prefix,
+// e.g. prefix "MEDIA_S3_" reads MEDIA_S3_ENDPOINT, MEDIA_S3_BUCKET_NAME, etc.
+func GetS3EnvConfig(name string, prefix string) models.S3Config {
+	return models.S3Config{
+		Name: name,
+		Endpoint: GetEnv(prefix + "ENDPOINT", false, ""),
+		Region: GetEnv(prefix + "REGION", false, "auto"),
+		AccessKeyID: GetEnv(prefix + "ACCESS_KEY", false, ""),
+		SecretAccessKey: GetEnv(prefix + "SECRET_ACCESS_KEY", false, ""),
+		BucketName: GetEnv(prefix + "BUCKET_NAME", false, ""),
+		PublicHost: GetEnv(prefix + "PUBLIC_HOST", false, ""),
+		BaseFolder: GetEnv(prefix + "BASE_FOLDER", false, ""),
+		UsePathStyle: GetEnv(prefix + "USE_PATH_STYLE", false, "false") == "true",
+		DefaultPresignExpire: time.Duration(GetEnvInt(prefix + "PRESIGN_EXPIRE", false, 15)) * time.Minute,
+	}
+}
+
+// GetLocalStorageEnvConfig loads a local filesystem storage config from env vars sharing the same prefix,
+// e.g. prefix "CACHE_STORAGE_" reads CACHE_STORAGE_BASE_DIR, CACHE_STORAGE_FILE_MODE, etc.
+func GetLocalStorageEnvConfig(name string, prefix string) models.LocalStorageConfig {
+	return models.LocalStorageConfig{
+		Name: name,
+		BaseDir: GetEnv(prefix + "BASE_DIR", false, "storage"),
+		DirMode: GetEnvFileMode(prefix + "DIR_MODE", 0755),
+		FileMode: GetEnvFileMode(prefix + "FILE_MODE", 0644),
+	}
+}
+
+// GetEnvFileMode reads an octal file permission such as "0644" or "644"
+func GetEnvFileMode(key string, defaultValue os.FileMode) os.FileMode {
+	value := GetEnv(key, false, "")
+	if value == "" {
+		return defaultValue
+	}
+
+	mode, err := strconv.ParseUint(value, 8, 32)
+	if err != nil || mode > 0777 {
+		log.Fatalf("Environment variable %v must be an octal file permission such as 0644 (got %q)", key, value)
+	}
+
+	return os.FileMode(mode)
 }
 
 func GetEnv(key string, required bool, defaultValue string) string {

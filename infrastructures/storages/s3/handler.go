@@ -3,6 +3,7 @@ package s3
 import (
 	"context"
 	"fmt"
+	"go-serviceboilerplate/commons/models"
 	"go-serviceboilerplate/infrastructures/configurations"
 	"io"
 	"path"
@@ -15,21 +16,23 @@ import (
 	awsS3 "github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
-// S3Instance works with any S3-compatible storage (AWS S3, Cloudflare R2, MinIO, etc.)
+// S3Instance works with any S3-compatible storage (AWS S3, Cloudflare R2, MinIO, etc.). Create one per bucket the service needs, e.g.
+//
+//	mainS3 := s3.NewS3Instance(configs, configs.Envs.MainS3)
+//	mediaS3 := s3.NewS3Instance(configs, configs.Envs.MediaS3)
 type S3Instance struct {
-	Client        *awsS3.Client
-	PresignClient *awsS3.PresignClient
-	BucketName    string
-	PublicHost    string
-	BaseFolder    string
+	Name                 string
+	Client               *awsS3.Client
+	PresignClient        *awsS3.PresignClient
+	BucketName           string
+	PublicHost           string
+	BaseFolder           string
 	DefaultPresignExpire time.Duration
 }
 
-func NewS3Instance(configs *configurations.Configs) *S3Instance {
-	s3Config := configs.Envs.StorageS3
-
+func NewS3Instance(configs *configurations.Configs, s3Config models.S3Config) *S3Instance {
 	if s3Config.BucketName == "" {
-		configs.Logger.Fatal("S3 storage bucket name is not configured (S3_BUCKET_NAME)")
+		configs.Logger.Fatal("S3 storage bucket name is not configured", "name", s3Config.Name)
 	}
 
 	cfg, err := awsConfig.LoadDefaultConfig(context.Background(),
@@ -38,7 +41,7 @@ func NewS3Instance(configs *configurations.Configs) *S3Instance {
 	)
 
 	if err != nil {
-		configs.Logger.Fatal("Failed to load AWS SDK config for S3 storage", "error", err)
+		configs.Logger.Fatal("Failed to load AWS SDK config for S3 storage", "name", s3Config.Name, "error", err)
 	}
 
 	client := awsS3.NewFromConfig(cfg, func(o *awsS3.Options) {
@@ -50,11 +53,12 @@ func NewS3Instance(configs *configurations.Configs) *S3Instance {
 	})
 
 	return &S3Instance{
-		Client:        client,
-		PresignClient: awsS3.NewPresignClient(client),
-		BucketName:    s3Config.BucketName,
-		PublicHost:    s3Config.PublicHost,
-		BaseFolder:    s3Config.BaseFolder,
+		Name:                 s3Config.Name,
+		Client:               client,
+		PresignClient:        awsS3.NewPresignClient(client),
+		BucketName:           s3Config.BucketName,
+		PublicHost:           s3Config.PublicHost,
+		BaseFolder:           s3Config.BaseFolder,
 		DefaultPresignExpire: s3Config.DefaultPresignExpire,
 	}
 }
@@ -74,7 +78,7 @@ func (c *S3Instance) UploadObject(ctx context.Context, key string, byteReader io
 	})
 
 	if err != nil {
-		return nil, fmt.Errorf("s3 upload object %q: %w", assignedKey, err)
+		return nil, fmt.Errorf("s3 %s upload object %q: %w", c.Name, assignedKey, err)
 	}
 
 	return object, nil
@@ -89,7 +93,7 @@ func (c *S3Instance) GetObject(ctx context.Context, key string) (*awsS3.GetObjec
 	})
 
 	if err != nil {
-		return nil, fmt.Errorf("s3 get object %q: %w", assignedKey, err)
+		return nil, fmt.Errorf("s3 %s get object %q: %w", c.Name, assignedKey, err)
 	}
 
 	return object, nil
@@ -104,7 +108,7 @@ func (c *S3Instance) DeleteObject(ctx context.Context, key string) (*awsS3.Delet
 	})
 
 	if err != nil {
-		return nil, fmt.Errorf("s3 delete object %q: %w", assignedKey, err)
+		return nil, fmt.Errorf("s3 %s delete object %q: %w", c.Name, assignedKey, err)
 	}
 
 	return object, nil
@@ -127,7 +131,7 @@ func (c *S3Instance) GetPresignedURL(ctx context.Context, key string, expireTime
 	}, awsS3.WithPresignExpires(c.resolvePresignExpire(expireTime)))
 
 	if err != nil {
-		return "", fmt.Errorf("s3 presign get object %q: %w", assignedKey, err)
+		return "", fmt.Errorf("s3 %s presign get object %q: %w", c.Name, assignedKey, err)
 	}
 
 	return presignedURL.URL, nil
@@ -145,7 +149,7 @@ func (c *S3Instance) GetPresignedUploadURL(ctx context.Context, key string, cont
 	}, awsS3.WithPresignExpires(c.resolvePresignExpire(expireTime)))
 
 	if err != nil {
-		return "", fmt.Errorf("s3 presign put object %q: %w", assignedKey, err)
+		return "", fmt.Errorf("s3 %s presign put object %q: %w", c.Name, assignedKey, err)
 	}
 
 	return presignedURL.URL, nil

@@ -9,6 +9,7 @@ A production-ready starter template for building backend REST API services using
 | HTTP Framework | [Echo v4](https://echo.labstack.com/) |
 | ORM | [GORM](https://gorm.io/) |
 | Database | PostgreSQL (one or more databases) |
+| Document Database | MongoDB via the [official Go driver v2](https://github.com/mongodb/mongo-go-driver) |
 | Cache | Redis via [go-redis v9](https://github.com/redis/go-redis) |
 | Message Broker | STOMP (ActiveMQ, RabbitMQ, Artemis) via [go-stomp v3](https://github.com/go-stomp/stomp) |
 | Object Storage | Any S3-compatible storage (AWS S3, Cloudflare R2, MinIO) via [aws-sdk-go-v2](https://github.com/aws/aws-sdk-go-v2) |
@@ -61,13 +62,15 @@ A production-ready starter template for building backend REST API services using
 │   ├── databases/
 │   │   ├── handler.go               # DatabaseInstance — aggregates DB connections
 │   │   ├── postgres/                # Generic PostgreSQL connection (GORM), reusable per database
+│   │   ├── mongodb/                 # Generic MongoDB connection with index setup, reusable per database
 │   │   └── redis/                   # Generic Redis connection with cache helpers, reusable per instance
 │   ├── message_broker/
 │   │   ├── handler.go               # MessageBroker interface + MessageBrokerInstance
 │   │   └── stomp/                   # STOMP client with auto-reconnect, reusable per connection
 │   ├── storages/
 │   │   ├── handler.go               # StorageInstance — aggregates storage clients
-│   │   └── s3/                      # S3-compatible storage client (AWS S3, R2, MinIO)
+│   │   ├── s3/                      # S3-compatible storage client (AWS S3, R2, MinIO), reusable per bucket
+│   │   └── localstorage/            # Local filesystem storage, reusable per directory
 │   ├── langchain/
 │   │   ├── handler.go               # LLM initialization, selects provider from env
 │   │   └── providers/               # ollama, gemini, openai
@@ -94,7 +97,7 @@ A production-ready starter template for building backend REST API services using
 
 - Go **1.26** or later
 - PostgreSQL database
-- Optional: Redis, a STOMP message broker, an S3-compatible bucket, and an LLM provider — only needed when you use those features
+- Optional: MongoDB, Redis, a STOMP message broker, an S3-compatible bucket, a writable directory for local storage, and an LLM provider — only needed when you use those features
 
 ## Getting Started
 
@@ -146,6 +149,11 @@ DB_AUTO_MIGRATE=true               # Set to true to run GORM AutoMigrate on star
 Optional services:
 
 ```env
+# MongoDB
+MONGO_URI=mongodb://app:app@localhost:27017/?authSource=admin
+MONGO_DATABASE=mydb
+MONGO_AUTO_MIGRATE=true           # Create registered indexes on startup
+
 # Redis
 REDIS_URL=redis://localhost:6379/0 # rediss:// for TLS
 REDIS_KEY_PREFIX=myservice:
@@ -242,6 +250,54 @@ AnalyticsDB: GetPostgresEnvConfig("analytics", "ANALYTICS_DB_"),
 // infrastructures/databases/handler.go → models are auto-migrated when ANALYTICS_DB_AUTO_MIGRATE=true
 analyticsDB := postgres.NewPostgresInstance(configs, configs.Envs.AnalyticsDB, &models.Event{})
 ```
+
+### MongoDB
+
+MongoDB is not wired by default. Initialize one or more databases in `main.go`, registering the indexes each collection needs — they are created on startup when `MONGO_AUTO_MIGRATE=true`, like `DB_AUTO_MIGRATE` for Postgres:
+
+```go
+import (
+    "go-serviceboilerplate/infrastructures/databases/mongodb"
+    "go.mongodb.org/mongo-driver/v2/bson"
+    "go.mongodb.org/mongo-driver/v2/mongo"
+    "go.mongodb.org/mongo-driver/v2/mongo/options"
+)
+
+mainMongo := mongodb.NewMongoInstance(configs, configs.Envs.MainMongo,
+    mongodb.CollectionIndexes{
+        Collection: "users",
+        Indexes: []mongo.IndexModel{
+            {Keys: bson.D{{Key: "email", Value: 1}}, Options: options.Index().SetUnique(true)},
+        },
+    },
+)
+defer mainMongo.Close(context.Background())
+```
+
+Query with the official driver through `Collection`. Map documents with `bson` tags:
+
+```go
+type User struct {
+    ID    bson.ObjectID `bson:"_id,omitempty"`
+    Email string        `bson:"email"`
+    Name  string        `bson:"name"`
+}
+
+users := mainMongo.Collection("users")
+
+_, err := users.InsertOne(ctx, User{Email: "ana@example.com", Name: "Ana"})
+if mongo.IsDuplicateKeyError(err) {
+    // email already exists (unique index)
+}
+
+var user User
+err = users.FindOne(ctx, bson.M{"email": "ana@example.com"}).Decode(&user)
+if errors.Is(err, mongo.ErrNoDocuments) {
+    // not found
+}
+```
+
+Add another database with `GetMongoEnvConfig("audit", "AUDIT_MONGO_")`, the same way as Postgres and Redis. Each instance has its own connection pool, so two databases on the same server can also share one instance via `mainMongo.Client.Database("other")`.
 
 ### Redis cache
 
@@ -430,16 +486,58 @@ The same client works for AWS S3, Cloudflare R2 and MinIO — only the env vars 
 | MinIO | `http://localhost:9000` | `us-east-1` | `true` |
 
 ```go
-storage := storages.NewStorageInstance(configs)
-s3 := storage.MainS3Client
+mainS3 := s3.NewS3Instance(configs, configs.Envs.MainS3)
 
-s3.UploadObject(ctx, "avatars/1.png", file, "image/png")
-s3.GetPublicObjectURL("avatars/1.png")
-s3.GetPresignedURL(ctx, "invoices/1.pdf", 0)                       // temporary download link
-s3.GetPresignedUploadURL(ctx, "avatars/2.png", "image/png", 0)     // let the client upload directly
+mainS3.UploadObject(ctx, "avatars/1.png", file, "image/png")
+mainS3.GetPublicObjectURL("avatars/1.png")
+mainS3.GetPresignedURL(ctx, "invoices/1.pdf", 0)                       // temporary download link
+mainS3.GetPresignedUploadURL(ctx, "avatars/2.png", "image/png", 0)     // let the client upload directly
 ```
 
-Pass `0` as the expiry to use `S3_PRESIGN_EXPIRE`.
+Pass `0` as the expiry to use `S3_PRESIGN_EXPIRE`. Add another bucket with `GetS3EnvConfig("media", "MEDIA_S3_")`, the same way as Postgres and Redis.
+
+### Local storage
+
+Stores files in a directory on the server — useful for file caches, generated files, or local config. Every key is confined to `LOCAL_STORAGE_BASE_DIR`: keys like `../etc/passwd` and symlinks pointing outside it are rejected.
+
+```go
+localStorage := localstorage.NewLocalStorageInstance(configs, configs.Envs.MainLocalStorage)
+defer localStorage.Close()
+
+// Write — parent directories are created; the write is atomic (no half-written files)
+err := localStorage.WriteFile("config/settings.json", data)
+err = localStorage.SaveFile("exports/report.csv", reader)
+
+// Read
+data, err := localStorage.ReadFile("config/settings.json")
+if errors.Is(err, fs.ErrNotExist) {
+    // not found
+}
+file, err := localStorage.GetFile("exports/report.csv") // stream; close it when done
+defer file.Close()
+
+// Inspect and clean up
+exists, err := localStorage.FileExists("config/settings.json")
+keys, err := localStorage.ListFiles("cache")        // recursive; "" lists everything
+err = localStorage.DeleteFile("exports/report.csv") // missing file is not an error
+err = localStorage.DeleteDir("cache")               // remove a folder and its contents
+```
+
+**Docker** — files in the container are lost when it is recreated. Mount a volume at the base directory to keep them:
+
+```yaml
+# docker-compose.yml
+services:
+  api:
+    environment:
+      LOCAL_STORAGE_BASE_DIR: /app/storage
+    volumes:
+      - app-storage:/app/storage
+volumes:
+  app-storage:
+```
+
+If the container runs as a non-root user, make sure that user can write to the mounted directory. Add another directory with `GetLocalStorageEnvConfig("cache", "CACHE_STORAGE_")`.
 
 ### LLM
 

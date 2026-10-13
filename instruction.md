@@ -10,6 +10,7 @@ This document provides context for AI agents to understand the structure and con
 - **Language**: Go 1.26+
 - **HTTP framework**: Echo v4
 - **ORM**: GORM with PostgreSQL
+- **Document database**: MongoDB (`go.mongodb.org/mongo-driver/v2`)
 - **Cache**: Redis (`github.com/redis/go-redis/v9`)
 - **Message broker**: STOMP (`github.com/go-stomp/stomp/v3`) — ActiveMQ, RabbitMQ STOMP plugin, Artemis
 - **Object storage**: any S3-compatible storage — AWS S3, Cloudflare R2, MinIO (`aws-sdk-go-v2/service/s3`)
@@ -52,13 +53,15 @@ This document provides context for AI agents to understand the structure and con
 │   ├── databases/
 │   │   ├── handler.go                       # DatabaseInstance — one exported field per database
 │   │   ├── postgres/handler.go              # Generic NewPostgresInstance(configs, PostgresConfig, migrateModels...)
+│   │   ├── mongodb/handler.go               # Generic NewMongoInstance(configs, MongoConfig, collectionIndexes...)
 │   │   └── redis/handler.go                 # Generic NewRedisInstance(configs, RedisConfig) + SaveCache/GetCache/RemoveCache
 │   ├── message_broker/
 │   │   ├── handler.go                       # MessageBroker interface, MessageBrokerInstance
 │   │   └── stomp/handler.go                 # Generic NewStompInstance(configs, StompConfig): Publish/Subscribe/Close, auto-reconnect
 │   ├── storages/
-│   │   ├── handler.go                       # StorageInstance — holds MainS3Client
-│   │   └── s3/handler.go                    # S3Instance: Upload/Get/Delete object, public URL, presigned GET/PUT URLs
+│   │   ├── handler.go                       # StorageInstance — holds MainS3Client, MainLocalStorage
+│   │   ├── s3/handler.go                    # Generic NewS3Instance(configs, S3Config): Upload/Get/Delete object, public URL, presigned GET/PUT URLs
+│   │   └── localstorage/handler.go          # Generic NewLocalStorageInstance(configs, LocalStorageConfig): sandboxed local file storage
 │   ├── langchain/
 │   │   ├── handler.go                       # NewLangChainInstance — picks provider from LLM_PROVIDER
 │   │   └── providers/{ollama,gemini,openai}/handler.go
@@ -113,7 +116,7 @@ interfaces → applications → infrastructures → commons
 - Pure data structs, constants and shared errors used across all layers.
 - No business logic. Dependencies are limited to the stdlib and type-only imports (JWT claims, Echo `middleware.CORSConfig`).
 - Key files:
-  - `configs.go` — `ENVConfig` (root) with `ApplicationConfig`, `PostgresConfig`, `RedisConfig`, `StorageS3Config`, `LLMConfig`
+  - `configs.go` — `ENVConfig` (root) with `ApplicationConfig`, `PostgresConfig`, `MongoConfig`, `RedisConfig`, `StompConfig`, `S3Config`, `LocalStorageConfig`, `LLMConfig`
   - `authentications.go` — `AccessTokenClaims`, `RefreshTokenClaims`, auth request/response types
   - `queries.go` — `Queries`, `FilterQueries`, `QueriesOptions`, `BaseQueriesRequest`
   - `constant.go` — custom HTTP headers (`X-Client-Id`, etc.), filter operators, `LLMProvider` values, `AgentsPromptDirectory`, `ErrCacheMiss`
@@ -145,7 +148,13 @@ interfaces → applications → infrastructures → commons
   - `RemoveCache(ctx, keys...)` — deletes one or more keys; missing keys are ignored.
   - `Client` — the raw `*redis.Client` for anything else. `KeyPrefix` is **not** applied to keys used through it.
   - `Close()`
-- Do not create a new sub-package per database. Add a config + a constructor call instead (see "Adding Another Database or Redis").
+- `mongodb.NewMongoInstance(configs, mongoConfig, collectionIndexes...)` is generic — one call per database. It pings on startup (fatal on failure) and returns `*MongoInstance` with:
+  - `Collection(name)` — a `*mongo.Collection` for the configured database; query with the official driver API.
+  - `Client` / `Database` — the raw driver handles (transactions, other databases on the same server).
+  - `CreateIndexes(ctx, collectionIndexes...)` — run automatically on startup when `AutoMigrate` is true; register each collection's `mongodb.CollectionIndexes` in the constructor call.
+  - `Close(ctx)` — disconnects, waiting for in-progress operations until `ctx` is done.
+  - Documents use `bson` struct tags. Not found is `mongo.ErrNoDocuments`; unique-index violations are detected with `mongo.IsDuplicateKeyError(err)`.
+- Do not create a new sub-package per database. Add a config + a constructor call instead (see "Adding Another Database, Redis, Message Broker or Storage").
 
 ### `infrastructures/message_broker/`
 - `MessageBroker` interface (`Publish`, `Subscribe`, `Close`) is the protocol-agnostic contract. Repositories and use cases depend on this interface, never on a concrete protocol package.
@@ -158,10 +167,16 @@ interfaces → applications → infrastructures → commons
 - **Adding a protocol** (AMQP, Kafka, NATS, ...): create `message_broker/<protocol>/handler.go` with a `New<Protocol>Instance(configs, <Protocol>Config)` constructor implementing `MessageBroker`, add `<Protocol>Config` + `Get<Protocol>EnvConfig(name, prefix)`, and add a compile-time check `var _ MessageBroker = (*<protocol>.<Protocol>Instance)(nil)` in `message_broker/handler.go`. Reuse `models.BrokerMessage` and `utils.EncodeMessagePayload`.
 
 ### `infrastructures/storages/`
-- `StorageInstance` holds `MainS3Client *s3.S3Instance`.
-- `S3Instance` works with any S3-compatible provider; only the config changes (`Endpoint`, `Region`, `UsePathStyle`). Do not add provider-specific packages.
+- `StorageInstance` holds `MainS3Client *s3.S3Instance` and `MainLocalStorage *localstorage.LocalStorageInstance`. Constructing it initializes both, so features that need only one should call that constructor directly.
+- `s3.NewS3Instance(configs, s3Config)` is generic — one call per bucket. `S3Instance` works with any S3-compatible provider; only the config changes (`Endpoint`, `Region`, `UsePathStyle`). Do not add provider-specific packages.
 - Methods: `UploadObject`, `GetObject`, `DeleteObject`, `GetPublicObjectURL`, `GetPresignedURL` (download), `GetPresignedUploadURL` (direct client upload; the client must send the signed `Content-Type`).
 - All keys are prefixed with `BaseFolder`. Pass `0` as expire time to use `DefaultPresignExpire`.
+- `localstorage.NewLocalStorageInstance(configs, localStorageConfig)` is generic — one call per directory. It creates `BaseDir` if missing and opens it with `os.Root`, so **every operation is confined to `BaseDir`** (path traversal and symlink escapes fail). Never build file paths yourself with `filepath.Join(baseDir, key)` — always go through the instance.
+  - `SaveFile(key, reader)` / `WriteFile(key, data)` — atomic write (temp file + rename), creates parent directories, replaces existing files.
+  - `GetFile(key)` (stream, caller closes) / `ReadFile(key)` — missing files return an error matching `fs.ErrNotExist`.
+  - `FileExists(key)`, `ListFiles(dir)` (recursive, `""` for all), `DeleteFile(key)` (missing is not an error), `DeleteDir(key)`, `Close()`.
+  - Keys are slash-separated and relative to `BaseDir`; a leading `/` is ignored.
+- In Docker, `BaseDir` must be a mounted volume for files to persist. The default `storage/` is git-ignored.
 
 ### `infrastructures/langchain/`
 - `NewLangChainInstance(configs)` returns `*LangChainInstance{LLM, Provider, Model}`, or `nil` when `LLM_PROVIDER` is empty — callers must handle `nil`.
@@ -209,7 +224,7 @@ interfaces → applications → infrastructures → commons
 
 ---
 
-## Adding Another Database, Redis or Message Broker Connection
+## Adding Another Database, Redis, Message Broker or Storage
 
 No new package is needed — reuse the generic constructors.
 
@@ -218,6 +233,12 @@ No new package is needed — reuse the generic constructors.
 2. `infrastructures/configurations/env.go` — `AnalyticsDB: GetPostgresEnvConfig("analytics", "ANALYTICS_DB_"),`
 3. `infrastructures/databases/handler.go` — add an `AnalyticsDB *gorm.DB` field and `postgres.NewPostgresInstance(configs, configs.Envs.AnalyticsDB, &models.Event{})`.
 4. `.env_example` — add `ANALYTICS_DB_DSN`, `ANALYTICS_DB_AUTO_MIGRATE`, etc.
+
+**MongoDB** (example: `audit`):
+1. `commons/models/configs.go` — add `AuditMongo MongoConfig` to `ENVConfig`.
+2. `infrastructures/configurations/env.go` — `AuditMongo: GetMongoEnvConfig("audit", "AUDIT_MONGO_"),`
+3. `main.go` — `auditMongo := mongodb.NewMongoInstance(configs, configs.Envs.AuditMongo, <indexes>...)` and close it on shutdown, then inject it where needed.
+4. `.env_example` — add `AUDIT_MONGO_URI`, `AUDIT_MONGO_DATABASE`, etc.
 
 **Redis** (example: `session`):
 1. `commons/models/configs.go` — add `SessionRedis RedisConfig` to `ENVConfig`.
@@ -231,7 +252,13 @@ No new package is needed — reuse the generic constructors.
 3. `main.go` (or `message_broker/handler.go`) — `eventsStomp := stomp.NewStompInstance(configs, configs.Envs.EventsStomp)` and `defer eventsStomp.Close()`.
 4. `.env_example` — add `EVENTS_STOMP_ADDRESS`, etc.
 
-Redis, the message broker and S3 are not wired into `main.go` by default, so the app starts without them. Wire them in when a feature needs them.
+**S3 bucket / local directory** (example: `media`, `cache`):
+1. `commons/models/configs.go` — add `MediaS3 S3Config` or `CacheLocalStorage LocalStorageConfig` to `ENVConfig`.
+2. `infrastructures/configurations/env.go` — `MediaS3: GetS3EnvConfig("media", "MEDIA_S3_"),` or `CacheLocalStorage: GetLocalStorageEnvConfig("cache", "CACHE_STORAGE_"),`
+3. `infrastructures/storages/handler.go` (or `main.go`) — `s3.NewS3Instance(configs, configs.Envs.MediaS3)` or `localstorage.NewLocalStorageInstance(configs, configs.Envs.CacheLocalStorage)`.
+4. `.env_example` — add `MEDIA_S3_BUCKET_NAME` / `CACHE_STORAGE_BASE_DIR`, etc.
+
+MongoDB, Redis, the message broker and storages are not wired into `main.go` by default, so the app starts without them. Wire them in when a feature needs them.
 
 ---
 
@@ -323,6 +350,18 @@ See `.env_example` for examples. Durations are integers in the unit shown.
 | `DB_LOG_LEVEL` | No | GORM log level: `silent`, `error`, `warn`, `info` (default) |
 | `DB_AUTO_MIGRATE` | No | `true` to run GORM AutoMigrate on startup |
 
+**MongoDB** — main database uses prefix `MONGO_`; additional databases use their own prefix with the same keys
+
+| Key | Required | Description |
+|---|---|---|
+| `MONGO_URI` | No | `mongodb://<user>:<password>@<host>:<port>/?authSource=admin` (`mongodb+srv://` for Atlas); default `mongodb://localhost:27017` |
+| `MONGO_DATABASE` | Yes, when connecting | Database name; startup fails if empty |
+| `MONGO_MAX_POOL_SIZE` | No | Max connections; empty uses the driver default (100) |
+| `MONGO_MIN_POOL_SIZE` | No | Connections kept open when idle; default 0 |
+| `MONGO_MAX_CONN_IDLE_TIME` | No | Minutes; empty means no limit |
+| `MONGO_CONNECT_TIMEOUT` | No | Seconds; default 10 |
+| `MONGO_AUTO_MIGRATE` | No | `true` to create registered indexes on startup |
+
 **Redis** — main Redis uses prefix `REDIS_`; additional instances use their own prefix with the same keys
 
 | Key | Required | Description |
@@ -346,7 +385,15 @@ See `.env_example` for examples. Durations are integers in the unit shown.
 | `STOMP_CONNECT_TIMEOUT` | No | Seconds; default 10 |
 | `STOMP_RECONNECT_INTERVAL` | No | Seconds; default 5; `0` disables auto-reconnect |
 
-**S3-compatible storage**
+**Local storage** — main directory uses prefix `LOCAL_STORAGE_`; additional directories use their own prefix with the same keys
+
+| Key | Required | Description |
+|---|---|---|
+| `LOCAL_STORAGE_BASE_DIR` | No | Root directory; created if missing; default `storage` |
+| `LOCAL_STORAGE_DIR_MODE` | No | Octal permission for created directories; default `0755` |
+| `LOCAL_STORAGE_FILE_MODE` | No | Octal permission for written files; default `0644` |
+
+**S3-compatible storage** — main bucket uses prefix `S3_`; additional buckets use their own prefix with the same keys
 
 | Key | Required | Description |
 |---|---|---|

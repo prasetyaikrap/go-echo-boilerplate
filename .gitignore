@@ -79,3 +79,6 @@ Desktop.ini
 *.pid
 
 .env
+
+# Local storage data (LOCAL_STORAGE_BASE_DIR default)
+/storage/
