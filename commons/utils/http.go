@@ -3,6 +3,7 @@ package utils
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -74,17 +75,7 @@ func ErrorResponse(c echo.Context, err error) error {
 	// Handle custom application exceptions
 	exceptions, ok := err.(*Exceptions);
 	if !ok {
-		errorResponse := ErrorResponseConfig{
-			Code: http.StatusInternalServerError,
-			Message: err.Error(),
-			Error: map[string]any{
-				"id": errorID,
-				"type": "INTERNALSERVER_ERROR",
-				"code": http.StatusInternalServerError,
-				"data": nil,
-			},
-		}
-		return c.JSON(http.StatusInternalServerError, errorResponse)
+		return c.JSON(http.StatusInternalServerError, internalServerErrorResponse(c, err, errorID))
 	}
 
 	exceptionResponse := ErrorResponseConfig{
@@ -180,16 +171,7 @@ func ErrorResponseSSEvent(c echo.Context, err error) error {
 	// Handle custom application exceptions
 	exceptions, ok := err.(*Exceptions);
 	if !ok {
-		errorResponse := ErrorResponseConfig{
-			Code: http.StatusInternalServerError,
-			Message: err.Error(),
-			Error: map[string]any{
-				"id": errorID,
-				"type": "INTERNALSERVER_ERROR",
-				"code": http.StatusInternalServerError,
-				"data": nil,
-			},
-		}
+		errorResponse := internalServerErrorResponse(c, err, errorID)
 
 		errPayload, _ := json.Marshal(errorResponse)
 		fmt.Fprintf(w, "data: %s\n\n", map[string]string{
@@ -216,4 +198,26 @@ func ErrorResponseSSEvent(c echo.Context, err error) error {
 	})
 	w.Flush()
 	return nil
+}
+
+// internalServerErrorResponse logs the real error server-side and returns a generic response, so internal details
+// (SQL errors, hostnames, file paths) never reach the client. The error id in the response matches the log line
+func internalServerErrorResponse(c echo.Context, err error, errorID string) ErrorResponseConfig {
+	slog.ErrorContext(c.Request().Context(), "Internal server error",
+		"error_id", errorID,
+		"method", c.Request().Method,
+		"uri", c.Request().RequestURI,
+		"error", err.Error(),
+	)
+
+	return ErrorResponseConfig{
+		Code:    http.StatusInternalServerError,
+		Message: http.StatusText(http.StatusInternalServerError),
+		Error: map[string]any{
+			"id":   errorID,
+			"type": "INTERNALSERVER_ERROR",
+			"code": http.StatusInternalServerError,
+			"data": nil,
+		},
+	}
 }

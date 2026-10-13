@@ -119,6 +119,11 @@ func (r *RedisInstance) RemoveCache(ctx context.Context, keys ...string) error {
 	return nil
 }
 
+// Ping checks the Redis connection. Useful as a readiness check
+func (r *RedisInstance) Ping(ctx context.Context) error {
+	return r.Client.Ping(ctx).Err()
+}
+
 func (r *RedisInstance) Close() error {
 	return r.Client.Close()
 }

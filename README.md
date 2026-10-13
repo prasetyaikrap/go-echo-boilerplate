@@ -27,6 +27,7 @@ A production-ready starter template for building backend REST API services using
 ├── main.go                          # Entry point — wires all layers together
 ├── go.mod
 ├── .env_example                     # Environment variable template
+├── Dockerfile                       # Multi-stage build → distroless, non-root image
 ├── instruction.md                   # Conventions and architecture guide for AI agents
 │
 ├── applications/
@@ -139,6 +140,7 @@ REFRESH_TOKEN_EXPIRATION=43200     # Minutes (30 days)
 REQUEST_TIMEOUT=30                 # Seconds; deadline for each request (0 disables)
 SHUTDOWN_TIMEOUT=10                # Seconds to wait for in-flight requests on shutdown
 SERVER_READ_HEADER_TIMEOUT=10      # Seconds to receive request headers (slowloris protection)
+REQUEST_BODY_LIMIT=10M             # Max request body size (413 when exceeded); 0 disables it
 # Optional connection timeouts, disabled unless set: SERVER_READ_TIMEOUT, SERVER_WRITE_TIMEOUT, SERVER_IDLE_TIMEOUT
 
 # PostgreSQL
@@ -194,6 +196,23 @@ go run main.go
 
 The server starts on the port defined by `PORT` (default: `3005`).
 
+### 5. Run the tests
+
+```bash
+go test ./...
+```
+
+Tests use only the standard library (`testing`, `httptest`) and need no database or broker.
+
+### 6. Run with Docker
+
+```bash
+docker build -t go-echo-boilerplate .
+docker run --rm -p 3005:3005 --env-file .env go-echo-boilerplate
+```
+
+The image is a static binary on `gcr.io/distroless/static` (no shell, ~47 MB) running as a non-root user (UID 65532). `.env` is excluded from the image by `.dockerignore` — pass configuration as environment variables at runtime. For multi-arch images use `docker buildx build --platform linux/amd64,linux/arm64 ...`.
+
 ## API Documentation
 
 Swagger UI is available at:
@@ -212,7 +231,9 @@ swag init
 
 | Method | Path | Description | Auth Required |
 |---|---|---|---|
-| GET | `/system` | Service health / info | Client ID only |
+| GET | `/healthz` | Liveness probe — process is up, checks no dependencies | None |
+| GET | `/readyz` | Readiness probe — checks the database (and any registered dependency); `503` when one is down | None |
+| GET | `/system` | Service info | Client ID only |
 
 ## Context and Request Tracing
 
@@ -249,6 +270,41 @@ What the request `ctx` gives you:
 Connections that don't send their request headers within `SERVER_READ_HEADER_TIMEOUT` (default 10s) are closed. `SERVER_READ_TIMEOUT`, `SERVER_WRITE_TIMEOUT` and `SERVER_IDLE_TIMEOUT` are available but disabled by default — they are mostly needed when the service is exposed directly rather than behind a reverse proxy, and `SERVER_WRITE_TIMEOUT` cuts off streaming (SSE) responses.
 
 On SIGINT/SIGTERM the server stops accepting requests and waits up to `SHUTDOWN_TIMEOUT` for in-flight ones before closing the database. See `instruction.md` for the full rules.
+
+## Kubernetes
+
+Probes, shutdown and image are set up for Kubernetes:
+
+```yaml
+spec:
+  terminationGracePeriodSeconds: 30        # must be longer than SHUTDOWN_TIMEOUT (10s)
+  containers:
+    - name: api
+      image: go-echo-boilerplate:latest
+      ports:
+        - containerPort: 3005
+      envFrom:
+        - secretRef: { name: api-env }       # PORT, CLIENT_ID, DB_DSN, ...
+      securityContext:
+        runAsNonRoot: true
+        readOnlyRootFilesystem: true         # mount a volume at /app/storage if local storage is used
+        allowPrivilegeEscalation: false
+      livenessProbe:
+        httpGet: { path: /healthz, port: 3005 }
+        periodSeconds: 10
+      readinessProbe:
+        httpGet: { path: /readyz, port: 3005 }
+        periodSeconds: 5
+        timeoutSeconds: 2                    # the readiness checks are cancelled when this passes
+      lifecycle:
+        preStop:
+          sleep: { seconds: 5 }              # let the Service stop routing before SIGTERM (Kubernetes 1.30+)
+```
+
+- **Liveness** never checks dependencies — a database outage should take pods out of rotation (readiness), not restart them.
+- **Readiness** checks are registered in `main.go` (`health.NewHealthHandler`); add Redis, MongoDB, etc. when you wire them in.
+- Probe paths skip `X-Client-Id` verification and are not written to the request log.
+- Exit code is `0` after a graceful shutdown and `1` when the server fails, so Kubernetes restarts failed pods.
 
 ## Request Headers
 
@@ -585,3 +641,7 @@ If the container runs as a non-root user, make sure that user can write to the m
 6. Register routes in `main.go`
 
 See `instruction.md` for the full conventions.
+
+## Author
+
+**Prasetya Ikra Priyadi** — [mail@prasetyapriyadi.my.id](mailto:mail@prasetyapriyadi.my.id)

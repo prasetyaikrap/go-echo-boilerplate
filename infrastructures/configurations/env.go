@@ -38,6 +38,7 @@ func GetENVConfig() *models.ENVConfig {
 			ServerReadTimeout: time.Duration(GetEnvInt("SERVER_READ_TIMEOUT", false, 0)) * time.Second,
 			ServerWriteTimeout: time.Duration(GetEnvInt("SERVER_WRITE_TIMEOUT", false, 0)) * time.Second,
 			ServerIdleTimeout: time.Duration(GetEnvInt("SERVER_IDLE_TIMEOUT", false, 0)) * time.Second,
+			RequestBodyLimit: GetEnv("REQUEST_BODY_LIMIT", false, "10M"),
 			CORSConfig: middleware.CORSConfig{
 				AllowOrigins:     GetAllowedOrigins(),
 				AllowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
@@ -185,10 +186,16 @@ func GetEnv(key string, required bool, defaultValue string) string {
 	return value
 }
 
+// GetEnvInt reads a non-negative integer. A missing or empty variable uses defaultValue,
+// while an explicit "0" is kept as 0 (used by many settings to mean "disabled" or "no limit")
 func GetEnvInt(key string, required bool, defaultValue int) int {
-	value, exists := os.LookupEnv(key)
-	if(value == "") {
-		value = "0"
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		if required {
+			log.Fatalf("Environment variable %v is required", key)
+		}
+
+		return defaultValue
 	}
 
 	intValue, err := strconv.Atoi(value)
@@ -196,16 +203,8 @@ func GetEnvInt(key string, required bool, defaultValue int) int {
 		log.Fatalf("Environment variable %v must be a valid integer (got %q)", key, value)
 	}
 
-	if(intValue <= 0) {
-		intValue = defaultValue
-	}
-	
-	if(!required) {
-		return intValue
-	}
-
-	if !exists || intValue <= 0 {
-		log.Fatalf("Environment variable %v is required", key)
+	if intValue < 0 {
+		log.Fatalf("Environment variable %v must not be negative (got %d)", key, intValue)
 	}
 
 	return intValue

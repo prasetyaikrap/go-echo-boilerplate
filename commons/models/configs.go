@@ -32,7 +32,7 @@ type ApplicationConfig struct {
 	// Zero waits indefinitely (env: SHUTDOWN_TIMEOUT in seconds, default 10)
 	ShutdownTimeout 		time.Duration
 	// ServerReadHeaderTimeout closes connections that do not send their request headers in time (slowloris protection).
-	// Always enabled, as recommended by gosec G112 (env: SERVER_READ_HEADER_TIMEOUT in seconds, default 10)
+	// Enabled by default as recommended by gosec G112; 0 disables it (env: SERVER_READ_HEADER_TIMEOUT in seconds, default 10)
 	ServerReadHeaderTimeout time.Duration
 	// ServerReadTimeout limits reading the whole request including the body. Large uploads on slow networks can hit it.
 	// Zero disables it (env: SERVER_READ_TIMEOUT in seconds, default disabled)
@@ -43,6 +43,9 @@ type ApplicationConfig struct {
 	// ServerIdleTimeout closes keep-alive connections idle between requests. Zero falls back to ServerReadTimeout,
 	// and no limit when that is also zero (env: SERVER_IDLE_TIMEOUT in seconds, default disabled)
 	ServerIdleTimeout 		time.Duration
+	// RequestBodyLimit rejects request bodies larger than this with 413, e.g. "10M", "512K", "1G". "0" disables it
+	// (env: REQUEST_BODY_LIMIT, default "10M")
+	RequestBodyLimit 		string
 	// CORSConfig is applied to every route. Origins come from ALLOWED_ORIGINS (comma separated, default "*")
 	CORSConfig				middleware.CORSConfig
 }

@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"go-serviceboilerplate/commons/models"
 	"go-serviceboilerplate/infrastructures/configurations"
 	"log/slog"
 
@@ -10,6 +11,9 @@ import (
 
 func NewSlogLoggerMiddleware(configs *configurations.Configs) echo.MiddlewareFunc {
 	return middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
+		Skipper: func(c echo.Context) bool {
+			return c.Path() == models.HealthLivenessPath || c.Path() == models.HealthReadinessPath
+		},
 		LogStatus:   true,
 		LogURI:      true,
 		LogMethod:   true,

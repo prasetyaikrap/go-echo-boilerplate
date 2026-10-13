@@ -1,0 +1,23 @@
+# Secrets — configuration is passed as environment variables at runtime, never baked into the image
+.env
+.env.*
+*.env
+
+# Version control and editor files
+.git
+.gitignore
+.github
+.vscode
+.idea
+
+# Local data and build output
+storage
+tmp
+bin
+dist
+*.log
+
+# Not needed to build
+Dockerfile
+.dockerignore
+*.md

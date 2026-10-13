@@ -13,6 +13,9 @@ type SlogLogger struct {
 
 func NewSlogLogger() *SlogLogger {
     handler := slog.New(contextHandler{slog.NewJSONHandler(os.Stdout, nil)})
+    // Also the process-wide default, so packages that cannot import configurations (commons/utils)
+    // and libraries using the standard slog package log through the same JSON handler with request_id
+    slog.SetDefault(handler)
     return &SlogLogger{handler: handler}
 }
 

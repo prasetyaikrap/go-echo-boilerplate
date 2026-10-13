@@ -1,6 +1,7 @@
 package databases
 
 import (
+	"context"
 	"go-serviceboilerplate/infrastructures/configurations"
 	"go-serviceboilerplate/infrastructures/databases/postgres"
 
@@ -17,6 +18,16 @@ func NewDatabaseInstance(configs *configurations.Configs) *DatabaseInstance {
 	mainDB := postgres.NewPostgresInstance(configs, configs.Envs.MainDB)
 
 	return &DatabaseInstance{MainDB: mainDB}
+}
+
+// Ping checks every database connection. Used by the readiness probe
+func (d *DatabaseInstance) Ping(ctx context.Context) error {
+	sqlDB, err := d.MainDB.DB()
+	if err != nil {
+		return err
+	}
+
+	return sqlDB.PingContext(ctx)
 }
 
 // Close closes every database connection pool. Call it on shutdown after the HTTP server has stopped

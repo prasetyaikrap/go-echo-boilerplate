@@ -2,6 +2,8 @@ package repositories
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"errors"
 	"go-serviceboilerplate/commons/utils"
 	"go-serviceboilerplate/infrastructures/configurations"
@@ -33,7 +35,7 @@ func (s AuthenticationsRepositories) VerifyClientID(ctx context.Context, clientI
 
 func (s AuthenticationsRepositories) VerifySecretToken(ctx context.Context, token string) error {
 	envConfigs := s.Configs.Envs
-	if token == "" ||  token != envConfigs.Application.SecretToken {
+	if token == "" || envConfigs.Application.SecretToken == "" || !secretsEqual(token, envConfigs.Application.SecretToken) {
 		return utils.NewAuthenticationError(errors.New("Service not allowed"))
 	}
 
@@ -51,4 +53,13 @@ func (s AuthenticationsRepositories) VerifyAuthToken(ctx context.Context, bearer
 	}
 	
 	return token, nil
+}
+
+// secretsEqual compares secrets in constant time. Hashing first makes both inputs the same length,
+// so the comparison time reveals neither the content nor the length of the secret
+func secretsEqual(a, b string) bool {
+	hashA := sha256.Sum256([]byte(a))
+	hashB := sha256.Sum256([]byte(b))
+
+	return subtle.ConstantTimeCompare(hashA[:], hashB[:]) == 1
 }

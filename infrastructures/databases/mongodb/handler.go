@@ -106,6 +106,11 @@ func (m *MongoInstance) CreateIndexes(ctx context.Context, collectionIndexes ...
 	return nil
 }
 
+// Ping checks the MongoDB connection. Useful as a readiness check
+func (m *MongoInstance) Ping(ctx context.Context) error {
+	return m.Client.Ping(ctx, readpref.Primary())
+}
+
 // Close disconnects from MongoDB, waiting for in-progress operations until ctx is done
 func (m *MongoInstance) Close(ctx context.Context) error {
 	return m.Client.Disconnect(ctx)

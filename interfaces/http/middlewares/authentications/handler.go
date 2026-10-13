@@ -1,6 +1,8 @@
 package authentications
 
 import (
+	"slices"
+
 	"go-serviceboilerplate/applications/usecases"
 	"go-serviceboilerplate/commons/models"
 	"go-serviceboilerplate/commons/utils"
@@ -18,6 +20,10 @@ func NewAuthMiddlewareHandler(authenticationsUsecase *usecases.AuthenticationsUs
 
 func (m *AuthMiddlewareHandler) VerifyClient(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
+		if slices.Contains(models.ClientVerificationSkipPaths, c.Path()) {
+			return next(c)
+		}
+
 		ctx := c.Request().Context()
 		clientID := c.Request().Header.Get(models.XClientIdHeader)
 

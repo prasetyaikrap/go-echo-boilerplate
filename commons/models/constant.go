@@ -12,6 +12,15 @@ var (
 	XServiceNameHeader = "X-Service-Name"
 	XUserIdHeader = "X-User-Id"
 	AuthorizationHeader = "Authorization"
+	// HealthLivenessPath reports whether the process is alive (Kubernetes livenessProbe). It checks no dependencies
+	HealthLivenessPath = "/healthz"
+	// HealthReadinessPath reports whether the service can serve traffic (Kubernetes readinessProbe). It checks dependencies
+	HealthReadinessPath = "/readyz"
+
+	// ClientVerificationSkipPaths are route paths that do not require the X-Client-Id header (e.g. probes from Kubernetes).
+	// Add "/swagger/*" here to open the Swagger UI in a browser
+	ClientVerificationSkipPaths = []string{HealthLivenessPath, HealthReadinessPath}
+
 	// XRequestIDHeader carries the request ID across services (HTTP) and through message brokers (message header)
 	XRequestIDHeader = "X-Request-Id"
 
