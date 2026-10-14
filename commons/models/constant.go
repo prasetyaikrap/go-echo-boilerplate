@@ -71,10 +71,31 @@ const (
 	LLMProviderOllama LLMProvider = "ollama"
 	LLMProviderGemini LLMProvider = "gemini"
 	LLMProviderOpenAI LLMProvider = "openai"
+	LLMProviderAnthropic LLMProvider = "anthropic"
 )
 
 const (
 	AgentsPromptDirectory = "files/agents/prompts"
+)
+
+const (
+	// LLMAssistantTurnCacheSize is how many Claude assistant turns with tool calls are kept in memory, so their
+	// thinking blocks can be sent back unchanged on the next request of a tool-use loop
+	LLMAssistantTurnCacheSize = 1000
+
+	// LLMDefaultMaxTokens / LLMDefaultStreamingMaxTokens are Claude's output limits when the caller sets none.
+	// Generous, so answers are not cut off mid-thought; streaming allows more since it has no HTTP timeout risk
+	LLMDefaultMaxTokens          = 16000
+	LLMDefaultStreamingMaxTokens = 64000
+
+	// AgentDefaultMaxIterations is how many model calls an agent run may make (each tool round is one) when the
+	// agent sets none. Stops a model that keeps calling tools from looping forever
+	AgentDefaultMaxIterations = 10
+)
+
+var (
+	// LLMServerSideFallbackModels are Claude model ID prefixes that accept server-side refusal fallbacks
+	LLMServerSideFallbackModels = []string{"claude-fable-5-1", "claude-opus-5", "claude-sonnet-5-5"}
 )
 
 var (
@@ -83,4 +104,10 @@ var (
 
 	// ErrMessageBrokerClosed is returned when publishing or subscribing on a message broker connection that has been closed
 	ErrMessageBrokerClosed = errors.New("message broker connection closed")
+
+	// ErrLLMRefusal is returned when the LLM (and every fallback model) declines the request. Check it with errors.Is
+	ErrLLMRefusal = errors.New("llm request declined")
+
+	// ErrAgentMaxIterations is returned when an agent is still calling tools after its maximum number of iterations
+	ErrAgentMaxIterations = errors.New("agent reached its maximum number of iterations")
 )

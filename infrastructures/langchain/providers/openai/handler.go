@@ -10,7 +10,7 @@ import (
 
 // NewOpenAILLM creates a new OpenAI-backed LLM client using the provided config.
 func NewOpenAILLM(cfg models.LLMConfig) (llms.Model, error) {
-	if cfg.OpenAIAPIKey == "" {
+	if cfg.APIKey == "" {
 		return nil, fmt.Errorf("openai API key is required")
 	}
 	if cfg.Model == "" {
@@ -18,8 +18,9 @@ func NewOpenAILLM(cfg models.LLMConfig) (llms.Model, error) {
 	}
 
 	llm, err := openaiLLM.New(
-		openaiLLM.WithToken(cfg.OpenAIAPIKey),
+		openaiLLM.WithToken(cfg.APIKey),
 		openaiLLM.WithModel(cfg.Model),
+		openaiLLM.WithHTTPClient(newResilientHTTPClient()),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create openai LLM: %w", err)

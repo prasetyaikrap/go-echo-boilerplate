@@ -13,7 +13,7 @@ A production-ready starter template for building backend REST API services using
 | Cache | Redis via [go-redis v9](https://github.com/redis/go-redis) |
 | Message Broker | STOMP (ActiveMQ, RabbitMQ, Artemis) via [go-stomp v3](https://github.com/go-stomp/stomp) |
 | Object Storage | Any S3-compatible storage (AWS S3, Cloudflare R2, MinIO) via [aws-sdk-go-v2](https://github.com/aws/aws-sdk-go-v2) |
-| LLM | [LangChainGo](https://github.com/tmc/langchaingo) — Ollama, Gemini, or OpenAI |
+| LLM | [LangChainGo](https://github.com/tmc/langchaingo) — Ollama, Gemini, OpenAI, or Claude (via the official [Anthropic Go SDK](https://github.com/anthropics/anthropic-sdk-go)) |
 | JWT | [golang-jwt/jwt v5](https://github.com/golang-jwt/jwt) |
 | Validation | [go-playground/validator v10](https://github.com/go-playground/validator) |
 | Logging | `log/slog` (JSON) |
@@ -52,6 +52,7 @@ A production-ready starter template for building backend REST API services using
 │       └── queries.go               # GORM query builder helpers
 │
 ├── docs/                            # Auto-generated Swagger docs (do not edit manually)
+├── documentations/                  # Architecture guides (open the .html files in a browser)
 ├── files/
 │   └── agents/prompts/              # LLM prompt templates
 │
@@ -74,7 +75,8 @@ A production-ready starter template for building backend REST API services using
 │   │   └── localstorage/            # Local filesystem storage, reusable per directory
 │   ├── langchain/
 │   │   ├── handler.go               # LLM initialization, selects provider from env
-│   │   └── providers/               # ollama, gemini, openai
+│   │   ├── providers/               # ollama, gemini, openai, anthropic
+│   │   └── agents/                  # Agent (tool loop, multi-agent), Tool
 │   ├── repositories/                # Data access layer
 │   │   ├── authentications.go       # Client ID / token verification against config
 │   │   └── system.go                # System info queries
@@ -83,6 +85,9 @@ A production-ready starter template for building backend REST API services using
 │       └── token_manager.go         # JWT access/refresh token sign & verify
 │
 └── interfaces/
+    ├── agents/
+    │   ├── handler.go               # AgentTools — gathers every domain's tools, use cases injected
+    │   └── system/                  # Example domain: agent tools (RegisterTools) calling SystemUsecase
     └── http/
         ├── api/
         │   └── system/              # Example domain: system info endpoint
@@ -181,9 +186,10 @@ S3_BUCKET_NAME=my-bucket
 S3_PUBLIC_HOST=https://cdn.example.com
 
 # LLM (leave LLM_PROVIDER empty to disable)
-LLM_PROVIDER=ollama                # ollama | gemini | openai
-LLM_MODEL=llama3
-LLM_OLLAMA_SERVER_URL=http://localhost:11434
+LLM_PROVIDER=anthropic             # ollama | gemini | openai | anthropic
+LLM_MODEL=                         # empty: llama3 (ollama) / claude-opus-5-5 (anthropic)
+LLM_API_KEY=...                    # gemini, openai, anthropic
+LLM_EFFORT=high                    # anthropic: low | medium | high | xhigh | max
 ```
 
 `.env_example` lists every supported variable, and each field in `commons/models/configs.go` documents its env var, unit and default.
@@ -631,7 +637,117 @@ If the container runs as a non-root user, make sure that user can write to the m
 
 ### LLM
 
-`langchain.NewLangChainInstance(configs)` returns the model for the provider set in `LLM_PROVIDER`, or `nil` when it is empty. Keep prompts as files in `files/agents/prompts/` and load them with `utils.GetAgentPromptFileContent`.
+`langchain.NewLangChainInstance(configs, configs.Envs.MainLLM)` returns the model for the provider set in `LLM_PROVIDER`, or `nil` when it is empty. Every provider is a langchaingo `llms.Model`, so chains, agents and tools work the same way whichever one is configured:
+
+```go
+llm := langchain.NewLangChainInstance(configs, configs.Envs.MainLLM)
+
+response, err := llm.LLM.GenerateContent(ctx, messages,
+	append(llm.CallOptions(), llms.WithStreamingFunc(onToken))...) // CallOptions adds LLM_TEMPERATURE where supported
+if errors.Is(err, models.ErrLLMRefusal) {
+	// Claude declined the request (after any fallback)
+}
+```
+
+**Claude (`LLM_PROVIDER=anthropic`)** uses the official Anthropic Go SDK behind the same `llms.Model` interface (langchaingo's built-in Anthropic client sends parameters current Claude models reject). Defaults to `claude-opus-5-5`. Differences from the other providers:
+
+- **No temperature** — current Claude models reject sampling parameters; `LLM_TEMPERATURE` is ignored with a warning. Tune `LLM_EFFORT` (`low` → `max`, default `high`) instead.
+- **Refusal fallback** — when Claude's safety classifiers decline a request, the API re-runs it on Anthropic's recommended fallback model (`LLM_REFUSAL_FALLBACK=true`, on models that support it). If everything declines, the call returns `models.ErrLLMRefusal`.
+- **Forced tool choice** (`required` / a named tool) is sent as `auto`; Claude rejects forced tool use. `none` works.
+- **Tool loops keep Claude's reasoning** — the adapter restores Claude's original assistant turn (including its thinking blocks) when an agent sends it back, which langchaingo's message types cannot carry. This is per process, so keep one tool loop on one instance.
+- Streaming works through `llms.WithStreamingFunc` (and `WithStreamingReasoningFunc` for reasoning summaries).
+
+Keep prompts as files in `files/agents/prompts/` and load them with `utils.GetAgentPromptFileContent`.
+
+### Agents (multi-agent, tools, different models)
+
+> Diagrams of the request flow, the `main.go` wiring and multi-agent setups: open [`documentations/agent-wiring.html`](documentations/agent-wiring.html) in a browser.
+
+An `agents.Agent` (`infrastructures/langchain/agents`) is a model with a role and tools. `Run` sends the input, executes the tools the model calls (in parallel when it calls several), sends the results back, and repeats until the model answers. It uses each provider's native tool calling, so it works with every provider above.
+
+**1. Configure one LLM per model/provider you need** — the main one uses the `LLM_` prefix; add more with any prefix:
+
+```go
+// commons/models/configs.go → ENVConfig:  FastLLM LLMConfig
+// infrastructures/configurations/env.go:  FastLLM: GetLLMEnvConfig("fast", "FAST_LLM_"),   // FAST_LLM_PROVIDER, FAST_LLM_MODEL, ...
+
+mainLLM := langchain.NewLangChainInstance(configs, configs.Envs.MainLLM)
+fastLLM := langchain.NewLangChainInstance(configs, configs.Envs.FastLLM)
+```
+
+**2. Write tools — the same clean-architecture flow as HTTP handlers:**
+
+| HTTP | Agent tool |
+|---|---|
+| Request model in `commons/models` (`json` + `validate` tags) | Tool input model in `commons/models` (`json` + `validate` + `description` tags) |
+| `c.Bind` + `c.Validate` | `agents.NewTool` decodes and validates the model's arguments — and generates the JSON schema the model sees from the same tags |
+| Handler in `interfaces/http/api/<domain>` calls a use case | Tool in `interfaces/agents/<domain>` calls a use case |
+| `RegisterRoutes` | `RegisterTools`, gathered by `agent_tools.NewAgentTools(usecases...)` |
+| `utils.ErrorResponse` | Same rules: `utils.New…Error` messages reach the model; other errors are hidden behind an error ID and logged |
+
+```go
+// commons/models/orders.go
+type GetOrderToolInput struct {
+	OrderID string `json:"order_id" validate:"required" description:"The order ID, e.g. ord_123"`
+}
+
+// interfaces/agents/orders/handler.go
+func (h *OrdersAgentTools) RegisterTools() []agents.Tool {
+	return []agents.Tool{
+		agents.NewTool("get_order", "Returns an order's status and items. Use it when the user asks about an order.", h.GetOrder),
+	}
+}
+
+func (h *OrdersAgentTools) GetOrder(ctx context.Context, input models.GetOrderToolInput) (string, error) {
+	order, err := h.ordersUsecase.GetOrder(ctx, input.OrderID) // ctx carries the request ID and user claims
+	if err != nil {
+		return "", err // e.g. utils.NewNotFoundError → the model reads "order ord_123 not found" and can react
+	}
+	return agents.JSON(order)
+}
+```
+
+Register a new domain in `interfaces/agents/handler.go` (a field plus its use cases in `NewAgentTools`), then wire it once in `main.go` like the HTTP handlers: `agentTools := agent_tools.NewAgentTools(systemUsecase, ordersUsecase)`. Use `struct{}` as the input type for tools without input; `agents.FromLangChainTool(tool)` wraps existing langchaingo `tools.Tool` implementations.
+
+**3. Create agents — each can use a different LLM or model — and combine them.** `AsTool` lets one agent delegate to another:
+
+```go
+researcher := &agents.Agent{
+	Name:         "researcher",
+	LLM:          fastLLM,                 // another provider
+	SystemPrompt: researcherPrompt,        // utils.GetAgentPromptFileContent("researcher.md")
+	Tools:        agentTools.Search.RegisterTools(),   // only the tools this agent's job needs
+}
+
+writer := &agents.Agent{
+	Name:  "writer",
+	LLM:   mainLLM,
+	Model: "claude-sonnet-5-5",            // same provider, different model for this agent only
+	Tools: agentTools.Orders.RegisterTools(),
+}
+
+coordinator := &agents.Agent{
+	Name:         "coordinator",
+	LLM:          mainLLM,
+	SystemPrompt: coordinatorPrompt,
+	Tools: []agents.Tool{
+		researcher.AsTool("Finds facts. Give it one precise question."),
+		writer.AsTool("Writes the final answer from the facts you give it."),
+	},
+}
+
+result, err := coordinator.Run(ctx, userMessage,
+	agents.WithHistory(previousMessages),                                      // continue a conversation
+	agents.WithOnToken(func(ctx context.Context, chunk string) error { ... }), // stream to SSE
+	agents.WithOnToolCall(func(ctx context.Context, e agents.ToolCallEvent) { ... }),
+)
+// result.Output — final answer; result.Messages — save it to continue the conversation next time
+```
+
+- Agents hold no per-run state: create them once at startup and share them between requests.
+- `MaxIterations` (default 10) stops a model that keeps calling tools; the run then returns `models.ErrAgentMaxIterations`.
+- A sub-agent starts fresh for every task, so the delegating agent must put all needed context in the task text.
+
 
 ## Adding a New Domain
 

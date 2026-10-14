@@ -188,31 +188,47 @@ type ENVConfig struct {
 	MainS3		S3Config
 	// MainLocalStorage is the primary local filesystem storage (env prefix: LOCAL_STORAGE_)
 	MainLocalStorage	LocalStorageConfig
-	// LLM selects and configures the LLM provider (env prefix: LLM_)
-	LLM 		LLMConfig
+	// MainLLM is the primary LLM (env prefix: LLM_). Add more with GetLLMEnvConfig(name, prefix)
+	MainLLM		LLMConfig
 }
 
 // LLMProvider represents the supported LLM backend providers.
 type LLMProvider string
 
-// LLMConfig holds the configuration for the LLM provider.
+// LLMConfig holds the configuration for one LLM. Create one per model/provider the service needs.
+// Loaded with GetLLMEnvConfig(name, prefix), e.g. prefix "LLM_" reads LLM_PROVIDER, LLM_MODEL, etc.
 type LLMConfig struct {
-	// Provider selects which LLM backend to use ("ollama", "gemini", or "openai") (env: LLM_PROVIDER).
+	// Name identifies the LLM in logs and errors (e.g. "main", "fast")
+	Name string
+
+	// Provider selects which LLM backend to use: "ollama", "gemini", "openai" or "anthropic" (env: <prefix>PROVIDER).
+	// Empty disables LangChain features
 	Provider LLMProvider
 
-	// Model is the model name/identifier (e.g. "llama3", "gemini-2.0-flash") (env: LLM_MODEL, default "llama3").
+	// Model is the model name/identifier, e.g. "llama3", "gemini-2.0-flash", "claude-opus-5-5" (env: <prefix>MODEL,
+	// default "llama3" for ollama and "claude-opus-5-5" for anthropic; required for gemini and openai)
 	Model string
 
 	// OllamaServerURL is required when Provider is LLMProviderOllama.
-	// Example: "http://localhost:11434" (env: LLM_OLLAMA_SERVER_URL)
+	// Example: "http://localhost:11434" (env: <prefix>OLLAMA_SERVER_URL)
 	OllamaServerURL string
 
-	// GeminiAPIKey is required when Provider is LLMProviderGemini (env: LLM_GEMINI_API_KEY).
-	GeminiAPIKey string
+	// APIKey for the selected provider; required for gemini, openai and anthropic (env: <prefix>API_KEY)
+	APIKey string
 
-	// OpenAIAPIKey is required when Provider is LLMProviderOpenAI (env: LLM_OPENAI_API_KEY).
-	OpenAIAPIKey string
+	// ContextWindowSize is the number of recent messages to keep in context for the LLM (env: <prefix>CONTEXT_WINDOW_SIZE, default 20)
+	ContextWindowSize int
 
-	// ContextWindowSize is the number of recent messages to keep in context for the LLM (env: LLM_CONTEXT_WINDOW_SIZE, default 20)
-	ContextWindowSize int 
+	// Temperature overrides the sampling temperature. nil (unset) keeps the provider default. Not sent to anthropic:
+	// current Claude models reject sampling parameters (env: <prefix>TEMPERATURE, e.g. 0.2)
+	Temperature *float64
+
+	// Effort controls how much reasoning Claude spends: "low", "medium", "high", "xhigh" or "max". Anthropic only;
+	// empty uses the model default (env: <prefix>EFFORT, default "high")
+	Effort string
+
+	// RefusalFallback re-runs a request on Anthropic's recommended fallback model when Claude's safety classifiers
+	// decline it, instead of returning a refusal. Anthropic only, on models that support server-side fallbacks
+	// (env: <prefix>REFUSAL_FALLBACK, default true)
+	RefusalFallback bool
 }

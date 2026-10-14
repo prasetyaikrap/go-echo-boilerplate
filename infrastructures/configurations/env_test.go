@@ -107,3 +107,63 @@ func TestCORSAllowsFrontendHeaders(t *testing.T) {
 		}
 	}
 }
+
+func TestGetLLMEnvConfig(t *testing.T) {
+	tests := []struct {
+		provider  string
+		model     string
+		wantModel string
+	}{
+		{provider: "anthropic", wantModel: "claude-opus-5-5"},
+		{provider: "ollama", wantModel: "llama3"},
+		{provider: "openai", wantModel: ""},
+		{provider: "anthropic", model: "claude-sonnet-5-5", wantModel: "claude-sonnet-5-5"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.provider+"/"+tt.model, func(t *testing.T) {
+			t.Setenv("LLM_PROVIDER", tt.provider)
+			t.Setenv("LLM_MODEL", tt.model)
+
+			if got := GetLLMEnvConfig("main", "LLM_").Model; got != tt.wantModel {
+				t.Errorf("Model = %q, want %q", got, tt.wantModel)
+			}
+		})
+	}
+}
+
+func TestGetLLMEnvConfigOptionalValues(t *testing.T) {
+	t.Setenv("LLM_PROVIDER", "anthropic")
+	t.Setenv("LLM_TEMPERATURE", "")
+	t.Setenv("LLM_REFUSAL_FALLBACK", "")
+
+	cfg := GetLLMEnvConfig("main", "LLM_")
+	if cfg.Temperature != nil {
+		t.Errorf("unset temperature must be nil, got %v", *cfg.Temperature)
+	}
+	if !cfg.RefusalFallback || cfg.Effort != "high" {
+		t.Errorf("defaults: RefusalFallback=%v Effort=%q", cfg.RefusalFallback, cfg.Effort)
+	}
+
+	t.Setenv("LLM_TEMPERATURE", "0")
+	t.Setenv("LLM_REFUSAL_FALLBACK", "false")
+	cfg = GetLLMEnvConfig("main", "LLM_")
+	if cfg.Temperature == nil || *cfg.Temperature != 0 {
+		t.Errorf("explicit 0 temperature must be kept, got %v", cfg.Temperature)
+	}
+	if cfg.RefusalFallback {
+		t.Error("LLM_REFUSAL_FALLBACK=false must disable it")
+	}
+}
+
+func TestGetLLMEnvConfigUsesPrefix(t *testing.T) {
+	t.Setenv("FAST_LLM_PROVIDER", "anthropic")
+	t.Setenv("FAST_LLM_MODEL", "claude-haiku-5-5")
+	t.Setenv("FAST_LLM_API_KEY", "fast-key")
+
+	got := GetLLMEnvConfig("fast", "FAST_LLM_")
+
+	if got.Name != "fast" || got.Model != "claude-haiku-5-5" || got.APIKey != "fast-key" {
+		t.Errorf("unexpected config: %+v", got)
+	}
+}

@@ -53,14 +53,7 @@ func GetENVConfig() *models.ENVConfig {
 		MainStomp: GetStompEnvConfig("main", "STOMP_"),
 		MainS3: GetS3EnvConfig("main", "S3_"),
 		MainLocalStorage: GetLocalStorageEnvConfig("main", "LOCAL_STORAGE_"),
-		LLM: models.LLMConfig{
-			Provider:        models.LLMProvider(GetEnv("LLM_PROVIDER", false, "")),
-			Model:           GetEnv("LLM_MODEL", false, "llama3"),
-			OllamaServerURL: GetEnv("LLM_OLLAMA_SERVER_URL", false, ""),
-			GeminiAPIKey:    GetEnv("LLM_GEMINI_API_KEY", false, ""),
-			OpenAIAPIKey:    GetEnv("LLM_OPENAI_API_KEY", false, ""),
-			ContextWindowSize: GetEnvInt("LLM_CONTEXT_WINDOW_SIZE", false, 20),
-		},
+		MainLLM: GetLLMEnvConfig("main", "LLM_"),
 	}
 
 	return &envConfig
@@ -152,6 +145,48 @@ func GetLocalStorageEnvConfig(name string, prefix string) models.LocalStorageCon
 		DirMode: GetEnvFileMode(prefix + "DIR_MODE", 0755),
 		FileMode: GetEnvFileMode(prefix + "FILE_MODE", 0644),
 	}
+}
+
+// GetLLMEnvConfig loads an LLM config from env vars sharing the same prefix,
+// e.g. prefix "FAST_LLM_" reads FAST_LLM_PROVIDER, FAST_LLM_MODEL, etc.
+// <prefix>MODEL defaults per provider: "llama3" for ollama and "claude-opus-5-5" for anthropic; gemini and openai require it
+func GetLLMEnvConfig(name string, prefix string) models.LLMConfig {
+	provider := models.LLMProvider(GetEnv(prefix + "PROVIDER", false, ""))
+
+	defaultModel := ""
+	switch provider {
+	case models.LLMProviderOllama:
+		defaultModel = "llama3"
+	case models.LLMProviderAnthropic:
+		defaultModel = "claude-opus-5-5"
+	}
+
+	return models.LLMConfig{
+		Name: name,
+		Provider: provider,
+		Model: GetEnv(prefix + "MODEL", false, defaultModel),
+		OllamaServerURL: GetEnv(prefix + "OLLAMA_SERVER_URL", false, ""),
+		APIKey: GetEnv(prefix + "API_KEY", false, ""),
+		ContextWindowSize: GetEnvInt(prefix + "CONTEXT_WINDOW_SIZE", false, 20),
+		Temperature: GetEnvFloat(prefix + "TEMPERATURE"),
+		Effort: GetEnv(prefix + "EFFORT", false, "high"),
+		RefusalFallback: GetEnv(prefix + "REFUSAL_FALLBACK", false, "true") == "true",
+	}
+}
+
+// GetEnvFloat reads an optional number. A missing or empty variable returns nil, so callers can tell "unset" from 0
+func GetEnvFloat(key string) *float64 {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return nil
+	}
+
+	floatValue, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		log.Fatalf("Environment variable %v must be a number (got %q)", key, value)
+	}
+
+	return &floatValue
 }
 
 // GetEnvFileMode reads an octal file permission such as "0644" or "644"

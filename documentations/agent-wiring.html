@@ -1,0 +1,596 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Wiring Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@500;700&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a single reading column of figures and file-by-file steps; diagrams may scroll sideways inside their frame */
+:root {
+  --bg: #f5f7fa;
+  --surface: #ffffff;
+  --fg: #1a2230;
+  --muted: #586374;
+  --line: #d3dae3;
+  --accent: #2f56c9;
+  --code-bg: #eef2f7;
+
+  /* Layer colours: one per Clean Architecture layer, used in every diagram */
+  --iface: #0e7268;   --iface-bg: #e3f3f1;
+  --app: #9a5a06;     --app-bg: #fbefdb;
+  --infra: #3654d0;   --infra-bg: #e7ecfc;
+  --ext: #687180;     --ext-bg: #eceff3;
+
+  --display: "Schibsted Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --body: "Source Sans 3", "Segoe UI", Roboto, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f141b; --surface: #151c26; --fg: #e3e8ef; --muted: #9ba7b7; --line: #2a3442;
+    --accent: #85a3ff; --code-bg: #1b2330;
+    --iface: #55d0c3; --iface-bg: #11302d;
+    --app: #f0b55c;   --app-bg: #33270f;
+    --infra: #93a9ff; --infra-bg: #1b2549;
+    --ext: #a6afbc;   --ext-bg: #222a35;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f141b; --surface: #151c26; --fg: #e3e8ef; --muted: #9ba7b7; --line: #2a3442;
+  --accent: #85a3ff; --code-bg: #1b2330;
+  --iface: #55d0c3; --iface-bg: #11302d;
+  --app: #f0b55c;   --app-bg: #33270f;
+  --infra: #93a9ff; --infra-bg: #1b2549;
+  --ext: #a6afbc;   --ext-bg: #222a35;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--body);
+  font-size: 17px;
+  line-height: 1.6;
+}
+.page {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding-inline: 20px;
+  padding-block: 40px 72px;
+  display: grid;
+  gap: 56px;
+}
+.prose { max-width: 68ch; }
+h1, h2, h3 { font-family: var(--display); line-height: 1.2; text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(30px, 5vw, 42px); font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 26px; font-weight: 700; }
+h3 { font-size: 18px; font-weight: 700; }
+p { margin: 0; }
+.stack { display: grid; gap: 16px; }
+.eyebrow {
+  font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--muted);
+}
+.lede { font-size: 19px; color: var(--muted); }
+code { font-family: var(--mono); font-size: 0.86em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+pre {
+  margin: 0; background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+  padding: 16px 18px; overflow-x: auto; font-family: var(--mono); font-size: 13px; line-height: 1.55;
+}
+pre code { background: none; padding: 0; font-size: inherit; }
+.c { color: var(--muted); }
+
+/* Legend */
+.legend { display: flex; flex-wrap: wrap; gap: 10px 22px; font-size: 14px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 8px; }
+.legend i { width: 14px; height: 14px; border-radius: 3px; border: 1.5px solid; display: inline-block; }
+.legend .k-iface { background: var(--iface-bg); border-color: var(--iface); }
+.legend .k-app { background: var(--app-bg); border-color: var(--app); }
+.legend .k-infra { background: var(--infra-bg); border-color: var(--infra); }
+.legend .k-ext { background: var(--ext-bg); border-color: var(--ext); }
+
+/* Figures */
+figure { margin: 0; display: grid; gap: 12px; }
+.frame {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  padding: 18px; overflow-x: auto;
+}
+.frame svg { display: block; width: 100%; height: auto; color: var(--fg); }
+.frame.wide svg { min-width: 860px; }
+figcaption { font-size: 15px; color: var(--muted); max-width: 72ch; }
+
+/* SVG styling through the page tokens */
+svg text { font-family: var(--body); font-size: 12.5px; fill: currentColor; }
+svg .t-head { font-family: var(--display); font-weight: 700; font-size: 13.5px; }
+svg .t-path { font-family: var(--mono); font-size: 10.5px; fill: var(--muted); }
+svg .t-msg { font-size: 12px; }
+svg .t-num { font-family: var(--mono); font-size: 10.5px; font-weight: 600; fill: var(--accent); }
+svg .t-note { font-size: 11.5px; fill: var(--muted); font-style: italic; }
+svg .iface rect { fill: var(--iface-bg); stroke: var(--iface); }
+svg .app rect { fill: var(--app-bg); stroke: var(--app); }
+svg .infra rect { fill: var(--infra-bg); stroke: var(--infra); }
+svg .ext rect { fill: var(--ext-bg); stroke: var(--ext); }
+svg .node rect { stroke-width: 1.5; }
+svg .life { stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 4 5; }
+svg .call { stroke: currentColor; stroke-width: 1.4; fill: none; }
+svg .ret { stroke: var(--muted); stroke-width: 1.4; stroke-dasharray: 5 4; fill: none; }
+svg .loop { fill: none; stroke: var(--accent); stroke-width: 1.3; stroke-dasharray: 6 4; }
+svg .loop-label { fill: var(--accent); font-size: 11.5px; font-weight: 600; }
+svg .ah { fill: currentColor; }
+svg .ah-ret { fill: var(--muted); }
+
+/* Steps */
+.steps { display: grid; gap: 28px; counter-reset: step; list-style: none; padding: 0; margin: 0; }
+.steps > li { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 4px 14px; }
+.steps > li::before {
+  counter-increment: step; content: counter(step);
+  grid-row: span 3; width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center; font-family: var(--mono); font-size: 13px; font-weight: 600;
+  color: var(--accent); border: 1.5px solid var(--accent);
+}
+.steps .file { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+.steps p, .steps pre { grid-column: 2; }
+.steps h3, .steps .file { grid-column: 2; }
+.layer-tag {
+  display: inline-block; font-family: var(--mono); font-size: 11px; padding: 1px 7px; border-radius: 999px;
+  border: 1px solid; margin-left: 6px; vertical-align: 2px;
+}
+.lt-iface { color: var(--iface); border-color: var(--iface); }
+.lt-app { color: var(--app); border-color: var(--app); }
+.lt-infra { color: var(--infra); border-color: var(--infra); }
+.lt-commons { color: var(--muted); border-color: var(--muted); }
+
+/* Error table */
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 15px; background: var(--surface); }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-family: var(--display); font-size: 14px; font-weight: 700; color: var(--muted); }
+tr:last-child td { border-bottom: none; }
+.note {
+  border-left: 3px solid var(--accent); padding: 4px 0 4px 16px; color: var(--muted); max-width: 72ch;
+}
+@media (max-width: 560px) {
+  body { font-size: 16px; }
+  .page { padding-block: 28px 56px; gap: 44px; }
+  .steps > li { grid-template-columns: minmax(0, 1fr); }
+  .steps > li::before { grid-row: auto; }
+  .steps p, .steps pre, .steps h3, .steps .file { grid-column: 1; }
+}
+</style>
+</head>
+<body>
+<main class="page">
+
+  <header class="stack prose">
+    <span class="eyebrow">go-echo-boilerplate · agents</span>
+    <h1>Agent Wiring Map</h1>
+    <p class="lede">How an agent tool reaches your use cases without breaking Clean Architecture: what happens on a request, how <code>main.go</code> wires it, and which files to touch when you add a tool or an agent.</p>
+    <div class="legend" aria-label="Layer colours">
+      <span><i class="k-iface"></i>interfaces/ (handlers, tools)</span>
+      <span><i class="k-app"></i>applications/usecases</span>
+      <span><i class="k-infra"></i>infrastructures/</span>
+      <span><i class="k-ext"></i>outside the service</span>
+    </div>
+  </header>
+
+  <!-- 1. Runtime -->
+  <section class="stack">
+    <div class="stack prose">
+      <span class="eyebrow">1 · on every request</span>
+      <h2>A chat request, step by step</h2>
+      <p>The agent never touches your database. When the model wants data, the agent calls a <strong>tool</strong>, and the tool calls a <strong>use case</strong> exactly like an HTTP handler would. Steps 4 to 10 repeat until the model stops asking for tools.</p>
+    </div>
+    <figure>
+      <div class="frame wide">
+        <svg viewBox="0 0 1040 640" role="img" aria-label="Sequence diagram: the client posts a chat message, the handler calls ChatUsecase, which runs the agent. The agent sends messages and tool schemas to the LLM; the LLM answers with a tool call; the agent decodes and validates it and calls the orders tool, which calls OrdersUsecase and its repository; the result goes back to the LLM. This repeats until the LLM answers, and the answer is streamed to the client as SSE events.">
+          <defs>
+            <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+            <marker id="a1r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah-ret" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+
+          <!-- lane heads: centres at 70, 215, 360, 510, 665, 820, 965 -->
+          <g class="node ext"><rect x="12" y="14" width="116" height="52" rx="7"/></g>
+          <text class="t-head" x="70" y="37" text-anchor="middle">Client</text>
+          <text class="t-path" x="70" y="54" text-anchor="middle">browser / app</text>
+
+          <g class="node iface"><rect x="145" y="14" width="140" height="52" rx="7"/></g>
+          <text class="t-head" x="215" y="37" text-anchor="middle">ChatHandler</text>
+          <text class="t-path" x="215" y="54" text-anchor="middle">interfaces/http/api/chat</text>
+
+          <g class="node app"><rect x="295" y="14" width="130" height="52" rx="7"/></g>
+          <text class="t-head" x="360" y="37" text-anchor="middle">ChatUsecase</text>
+          <text class="t-path" x="360" y="54" text-anchor="middle">usecases/chat.go</text>
+
+          <g class="node infra"><rect x="440" y="14" width="140" height="52" rx="7"/></g>
+          <text class="t-head" x="510" y="37" text-anchor="middle">Agent.Run</text>
+          <text class="t-path" x="510" y="54" text-anchor="middle">langchain/agents</text>
+
+          <g class="node ext"><rect x="600" y="14" width="130" height="52" rx="7"/></g>
+          <text class="t-head" x="665" y="37" text-anchor="middle">LLM provider</text>
+          <text class="t-path" x="665" y="54" text-anchor="middle">Claude / OpenAI / …</text>
+
+          <g class="node iface"><rect x="750" y="14" width="140" height="52" rx="7"/></g>
+          <text class="t-head" x="820" y="37" text-anchor="middle">OrdersAgentTools</text>
+          <text class="t-path" x="820" y="54" text-anchor="middle">interfaces/agents/orders</text>
+
+          <g class="node app"><rect x="905" y="14" width="122" height="52" rx="7"/></g>
+          <text class="t-head" x="966" y="37" text-anchor="middle">OrdersUsecase</text>
+          <text class="t-path" x="966" y="54" text-anchor="middle">→ repository → DB</text>
+
+          <!-- lifelines -->
+          <line class="life" x1="70" y1="66" x2="70" y2="625"/>
+          <line class="life" x1="215" y1="66" x2="215" y2="625"/>
+          <line class="life" x1="360" y1="66" x2="360" y2="625"/>
+          <line class="life" x1="510" y1="66" x2="510" y2="625"/>
+          <line class="life" x1="665" y1="66" x2="665" y2="625"/>
+          <line class="life" x1="820" y1="66" x2="820" y2="625"/>
+          <line class="life" x1="966" y1="66" x2="966" y2="625"/>
+
+          <!-- 1 -->
+          <text class="t-num" x="76" y="100">1</text>
+          <text class="t-msg" x="142" y="100" text-anchor="middle">POST /chat (SSE)</text>
+          <line class="call" x1="70" y1="108" x2="213" y2="108" marker-end="url(#a1)"/>
+          <!-- 2 -->
+          <text class="t-num" x="221" y="140">2</text>
+          <text class="t-msg" x="288" y="140" text-anchor="middle">Chat(ctx, msg)</text>
+          <line class="call" x1="215" y1="148" x2="358" y2="148" marker-end="url(#a1)"/>
+          <!-- 3 -->
+          <text class="t-num" x="366" y="180">3</text>
+          <text class="t-msg" x="435" y="180" text-anchor="middle">Run(ctx, msg)</text>
+          <line class="call" x1="360" y1="188" x2="508" y2="188" marker-end="url(#a1)"/>
+
+          <!-- loop frame -->
+          <rect class="loop" x="455" y="204" width="575" height="292" rx="6"/>
+          <text class="loop-label" x="465" y="222">repeat while the model calls tools (max 10)</text>
+
+          <!-- 4 -->
+          <text class="t-num" x="516" y="248">4</text>
+          <text class="t-msg" x="588" y="248" text-anchor="middle">messages + tools</text>
+          <line class="call" x1="510" y1="256" x2="663" y2="256" marker-end="url(#a1)"/>
+          <!-- 5 -->
+          <text class="t-num" x="516" y="288">5</text>
+          <text class="t-msg" x="588" y="288" text-anchor="middle">tool call get_order</text>
+          <line class="ret" x1="665" y1="296" x2="512" y2="296" marker-end="url(#a1r)"/>
+          <!-- 6 -->
+          <text class="t-num" x="516" y="328">6</text>
+          <text class="t-msg" x="665" y="328" text-anchor="middle">decode + validate → GetOrder(ctx, input)</text>
+          <line class="call" x1="510" y1="336" x2="818" y2="336" marker-end="url(#a1)"/>
+          <!-- 7 -->
+          <text class="t-num" x="826" y="368">7</text>
+          <text class="t-msg" x="893" y="368" text-anchor="middle">GetOrder(ctx, id)</text>
+          <line class="call" x1="820" y1="376" x2="964" y2="376" marker-end="url(#a1)"/>
+          <!-- 8 -->
+          <text class="t-num" x="826" y="408">8</text>
+          <text class="t-msg" x="893" y="408" text-anchor="middle">order | NotFound</text>
+          <line class="ret" x1="966" y1="416" x2="822" y2="416" marker-end="url(#a1r)"/>
+          <!-- 9 -->
+          <text class="t-num" x="516" y="448">9</text>
+          <text class="t-msg" x="665" y="448" text-anchor="middle">JSON result, or "Error: order … not found"</text>
+          <line class="ret" x1="820" y1="456" x2="512" y2="456" marker-end="url(#a1r)"/>
+          <!-- 10 -->
+          <text class="t-num" x="516" y="478">10</text>
+          <text class="t-msg" x="588" y="478" text-anchor="middle">tool result</text>
+          <line class="call" x1="510" y1="486" x2="663" y2="486" marker-end="url(#a1)"/>
+
+          <!-- 11 -->
+          <text class="t-num" x="516" y="528">11</text>
+          <text class="t-msg" x="588" y="528" text-anchor="middle">final answer, streamed</text>
+          <line class="ret" x1="665" y1="536" x2="512" y2="536" marker-end="url(#a1r)"/>
+          <!-- 12 -->
+          <text class="t-num" x="76" y="568">12</text>
+          <text class="t-msg" x="290" y="568" text-anchor="middle">each chunk → onToken → SSE "token" event</text>
+          <line class="ret" x1="510" y1="576" x2="72" y2="576" marker-end="url(#a1r)"/>
+          <!-- 13 -->
+          <text class="t-num" x="76" y="606">13</text>
+          <text class="t-msg" x="142" y="606" text-anchor="middle">SSE "complete"</text>
+          <line class="ret" x1="215" y1="614" x2="72" y2="614" marker-end="url(#a1r)"/>
+        </svg>
+      </div>
+      <figcaption>The request <code>ctx</code> travels the whole way (steps 2, 3, 6, 7), so <code>OrdersUsecase</code> can read the request ID and the user's claims with <code>utils.AccessTokenClaimsFromContext(ctx)</code>, the same as when an HTTP handler calls it. Solid arrows are calls; dashed arrows are what comes back.</figcaption>
+    </figure>
+  </section>
+
+  <!-- 2. Startup wiring -->
+  <section class="stack">
+    <div class="stack prose">
+      <span class="eyebrow">2 · once, at startup</span>
+      <h2>How <code>main.go</code> wires it</h2>
+      <p>Each piece is built once and passed into the next, the same way you already pass repositories into use cases and use cases into handlers. The agent only receives the tools as values, so <code>infrastructures/</code> never imports <code>interfaces/</code>.</p>
+    </div>
+    <figure>
+      <div class="frame wide">
+        <svg viewBox="0 0 1040 250" role="img" aria-label="Startup wiring chain: the orders repository is passed to OrdersUsecase, which is passed to AgentTools; AgentTools' orders tools and the main LLM instance are passed to the support agent; the agent is passed to ChatUsecase, which is passed to ChatHandler, whose route is registered on Echo.">
+          <defs>
+            <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+
+          <!-- LLM instance above the agent -->
+          <g class="node infra"><rect x="545" y="10" width="160" height="56" rx="7"/></g>
+          <text class="t-head" x="625" y="33" text-anchor="middle">mainLLM</text>
+          <text class="t-path" x="625" y="50" text-anchor="middle">NewLangChainInstance</text>
+          <line class="call" x1="625" y1="66" x2="625" y2="128" marker-end="url(#a2)"/>
+          <text class="t-msg" x="633" y="102">LLM</text>
+
+          <!-- chain: x = 10, 185, 360, 545, 735, 900 -->
+          <g class="node infra"><rect x="10" y="130" width="150" height="70" rx="7"/></g>
+          <text class="t-head" x="85" y="158" text-anchor="middle">OrdersRepository</text>
+          <text class="t-path" x="85" y="178" text-anchor="middle">infrastructures/repositories</text>
+
+          <g class="node app"><rect x="185" y="130" width="150" height="70" rx="7"/></g>
+          <text class="t-head" x="260" y="158" text-anchor="middle">OrdersUsecase</text>
+          <text class="t-path" x="260" y="178" text-anchor="middle">applications/usecases</text>
+
+          <g class="node iface"><rect x="360" y="130" width="160" height="70" rx="7"/></g>
+          <text class="t-head" x="440" y="158" text-anchor="middle">AgentTools</text>
+          <text class="t-path" x="440" y="178" text-anchor="middle">interfaces/agents</text>
+
+          <g class="node infra"><rect x="545" y="130" width="160" height="70" rx="7"/></g>
+          <text class="t-head" x="625" y="158" text-anchor="middle">supportAgent</text>
+          <text class="t-path" x="625" y="178" text-anchor="middle">*agents.Agent</text>
+
+          <g class="node app"><rect x="735" y="130" width="140" height="70" rx="7"/></g>
+          <text class="t-head" x="805" y="158" text-anchor="middle">ChatUsecase</text>
+          <text class="t-path" x="805" y="178" text-anchor="middle">applications/usecases</text>
+
+          <g class="node iface"><rect x="900" y="130" width="130" height="70" rx="7"/></g>
+          <text class="t-head" x="965" y="158" text-anchor="middle">ChatHandler</text>
+          <text class="t-path" x="965" y="178" text-anchor="middle">e.POST("/chat")</text>
+
+          <line class="call" x1="160" y1="165" x2="183" y2="165" marker-end="url(#a2)"/>
+          <line class="call" x1="335" y1="165" x2="358" y2="165" marker-end="url(#a2)"/>
+          <line class="call" x1="520" y1="165" x2="543" y2="165" marker-end="url(#a2)"/>
+          <line class="call" x1="705" y1="165" x2="733" y2="165" marker-end="url(#a2)"/>
+          <line class="call" x1="875" y1="165" x2="898" y2="165" marker-end="url(#a2)"/>
+
+          <text class="t-note" x="172" y="228" text-anchor="middle">repo</text>
+          <text class="t-note" x="347" y="228" text-anchor="middle">usecase</text>
+          <text class="t-note" x="532" y="228" text-anchor="middle">Tools</text>
+          <text class="t-note" x="719" y="228" text-anchor="middle">agent</text>
+          <text class="t-note" x="887" y="228" text-anchor="middle">usecase</text>
+        </svg>
+      </div>
+      <figcaption>Every arrow means "passed into the constructor of". The words under the arrows are what gets passed. Agents hold no per-request state, so this one <code>supportAgent</code> serves every request.</figcaption>
+    </figure>
+
+<pre><code><span class="c">// main.go (example names: orders + chat do not exist yet; system does)</span>
+mainLLM := langchain.NewLangChainInstance(configs, configs.Envs.MainLLM)
+
+ordersRepositories := repositories.NewOrdersRepositories(dbInstances)
+ordersUsecase := usecases.NewOrdersUsecase(ordersRepositories)
+
+agentTools := agent_tools.NewAgentTools(systemUsecase, ordersUsecase)
+
+supportAgent := &amp;agents.Agent{
+	Name:         "support",
+	LLM:          mainLLM,
+	SystemPrompt: supportPrompt, <span class="c">// utils.GetAgentPromptFileContent("support.md")</span>
+	Tools:        agentTools.Orders.RegisterTools(),
+}
+
+chatUsecase := usecases.NewChatUsecase(supportAgent)
+chatHandler := chat.NewChatHandler(chatUsecase)
+chatHandler.RegisterRoutes(e.Group("/chat"))</code></pre>
+  </section>
+
+  <!-- 3. Multi-agent -->
+  <section class="stack">
+    <div class="stack prose">
+      <span class="eyebrow">3 · several agents, several models</span>
+      <h2>Multi-agent with different models</h2>
+      <p>A sub-agent is just another tool. <code>researcher.AsTool(…)</code> gives the coordinator a tool named <code>researcher</code> that takes a <code>task</code> and returns the researcher's answer. Each agent picks its own model.</p>
+    </div>
+    <figure>
+      <div class="frame wide">
+        <svg viewBox="0 0 860 360" role="img" aria-label="Multi-agent diagram: a coordinator agent on the main LLM has three tools: researcher, writer and get_order. Calling researcher runs the researcher agent on a second LLM instance from another provider with its own search tools. Calling writer runs the writer agent on the main LLM with a different model. get_order calls OrdersUsecase directly.">
+          <defs>
+            <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0,0 L10,5 L0,10 z"/></marker>
+          </defs>
+
+          <!-- coordinator -->
+          <g class="node infra"><rect x="260" y="12" width="340" height="104" rx="8"/></g>
+          <text class="t-head" x="430" y="38" text-anchor="middle">coordinator</text>
+          <text x="430" y="60" text-anchor="middle">LLM: mainLLM · claude-opus-5-5</text>
+          <text class="t-path" x="430" y="82" text-anchor="middle">Tools: researcher, writer, get_order</text>
+          <text class="t-path" x="430" y="100" text-anchor="middle">Run(ctx, userMessage) is called by your use case</text>
+
+          <!-- researcher -->
+          <g class="node infra"><rect x="10" y="226" width="260" height="104" rx="8"/></g>
+          <text class="t-head" x="140" y="252" text-anchor="middle">researcher</text>
+          <text x="140" y="274" text-anchor="middle">LLM: fastLLM · another provider</text>
+          <text class="t-path" x="140" y="296" text-anchor="middle">Tools: agentTools.Search…</text>
+          <text class="t-path" x="140" y="314" text-anchor="middle">env prefix FAST_LLM_</text>
+
+          <!-- writer -->
+          <g class="node infra"><rect x="300" y="226" width="260" height="104" rx="8"/></g>
+          <text class="t-head" x="430" y="252" text-anchor="middle">writer</text>
+          <text x="430" y="274" text-anchor="middle">LLM: mainLLM</text>
+          <text class="t-path" x="430" y="296" text-anchor="middle">Model: "claude-sonnet-5-5"</text>
+          <text class="t-path" x="430" y="314" text-anchor="middle">same provider, cheaper model</text>
+
+          <!-- domain tool -->
+          <g class="node iface"><rect x="590" y="226" width="260" height="104" rx="8"/></g>
+          <text class="t-head" x="720" y="252" text-anchor="middle">get_order</text>
+          <text x="720" y="274" text-anchor="middle">OrdersAgentTools.GetOrder</text>
+          <text class="t-path" x="720" y="296" text-anchor="middle">→ OrdersUsecase → repository</text>
+          <text class="t-path" x="720" y="314" text-anchor="middle">a normal domain tool</text>
+
+          <!-- edges from coordinator -->
+          <path class="call" d="M330,116 L330,160 L140,160 L140,224" marker-end="url(#a3)"/>
+          <line class="call" x1="430" y1="116" x2="430" y2="224" marker-end="url(#a3)"/>
+          <path class="call" d="M530,116 L530,160 L720,160 L720,224" marker-end="url(#a3)"/>
+
+          <text class="t-msg" x="236" y="152" text-anchor="middle">{"task": "…"} → answer</text>
+          <text class="t-msg" x="438" y="190">{"task": "…"} → answer</text>
+          <text class="t-msg" x="625" y="152" text-anchor="middle">{"order_id": "…"} → JSON</text>
+        </svg>
+      </div>
+      <figcaption>To the coordinator's model, a sub-agent and a domain tool look the same: a tool with an input schema. Sub-agents start fresh for every task, so the coordinator must put everything they need in the task text.</figcaption>
+    </figure>
+
+<pre><code>fastLLM := langchain.NewLangChainInstance(configs, configs.Envs.FastLLM) <span class="c">// FAST_LLM_PROVIDER, FAST_LLM_MODEL…</span>
+
+researcher := &amp;agents.Agent{Name: "researcher", LLM: fastLLM, SystemPrompt: researcherPrompt,
+	Tools: agentTools.Search.RegisterTools()}
+writer := &amp;agents.Agent{Name: "writer", LLM: mainLLM, Model: "claude-sonnet-5-5", SystemPrompt: writerPrompt}
+
+coordinator := &amp;agents.Agent{
+	Name:         "coordinator",
+	LLM:          mainLLM,
+	SystemPrompt: coordinatorPrompt,
+	Tools: append(agentTools.Orders.RegisterTools(),
+		researcher.AsTool("Finds facts. Give it one precise question."),
+		writer.AsTool("Writes the final reply from the facts you give it."),
+	),
+}</code></pre>
+  </section>
+
+  <!-- 4. Add a tool -->
+  <section class="stack">
+    <div class="stack prose">
+      <span class="eyebrow">recipe</span>
+      <h2>Adding a new tool: four files</h2>
+      <p>Example: let agents look up an order. The use case and repository are the ones your HTTP endpoints already use; the tool only adds a new way in.</p>
+    </div>
+    <ol class="steps">
+      <li>
+        <h3>Describe the input <span class="layer-tag lt-commons">commons</span></h3>
+        <span class="file">commons/models/orders.go</span>
+        <p>Same tags as an HTTP request model, plus <code>description</code>. The JSON schema the model sees is generated from this struct, and the arguments are validated with it.</p>
+<pre><code>type GetOrderToolInput struct {
+	OrderID string `json:"order_id" validate:"required" description:"The order ID, e.g. ord_123"`
+}</code></pre>
+      </li>
+      <li>
+        <h3>Write the tool like a handler <span class="layer-tag lt-iface">interfaces</span></h3>
+        <span class="file">interfaces/agents/orders/handler.go</span>
+        <p>The struct holds the use cases. Each tool method gets <code>ctx</code> and the decoded input, calls the use case, and returns JSON. No business logic here.</p>
+<pre><code>package orders_agent
+
+type OrdersAgentTools struct {
+	ordersUsecase *usecases.OrdersUsecase
+}
+
+func NewOrdersAgentTools(ordersUsecase *usecases.OrdersUsecase) *OrdersAgentTools {
+	return &amp;OrdersAgentTools{ordersUsecase}
+}
+
+<span class="c">// Mirrors RegisterRoutes in interfaces/http</span>
+func (h *OrdersAgentTools) RegisterTools() []agents.Tool {
+	return []agents.Tool{
+		agents.NewTool("get_order",
+			"Returns an order's status and items. Use it when the user asks about an order.",
+			h.GetOrder),
+	}
+}
+
+func (h *OrdersAgentTools) GetOrder(ctx context.Context, input models.GetOrderToolInput) (string, error) {
+	order, err := h.ordersUsecase.GetOrder(ctx, input.OrderID)
+	if err != nil {
+		return "", err <span class="c">// see "What the model sees" below</span>
+	}
+	return agents.JSON(order)
+}</code></pre>
+      </li>
+      <li>
+        <h3>Register the domain <span class="layer-tag lt-iface">interfaces</span></h3>
+        <span class="file">interfaces/agents/handler.go</span>
+        <p>Add a field and the use case parameter, like adding a handler to the router.</p>
+<pre><code>type AgentTools struct {
+	System *system_agent.SystemAgentTools
+	Orders *orders_agent.OrdersAgentTools <span class="c">// new</span>
+}
+
+func NewAgentTools(systemUsecase *usecases.SystemUsecase, ordersUsecase *usecases.OrdersUsecase) *AgentTools {
+	return &amp;AgentTools{
+		System: system_agent.NewSystemAgentTools(systemUsecase),
+		Orders: orders_agent.NewOrdersAgentTools(ordersUsecase), <span class="c">// new</span>
+	}
+}
+<span class="c">// and add t.Orders.RegisterTools() to All()</span></code></pre>
+      </li>
+      <li>
+        <h3>Give it to an agent <span class="layer-tag lt-commons">main.go</span></h3>
+        <span class="file">main.go</span>
+        <p>Pass the use case in, then list the tools on the agents that should have them.</p>
+<pre><code>agentTools := agent_tools.NewAgentTools(systemUsecase, ordersUsecase)
+supportAgent.Tools = append(supportAgent.Tools, agentTools.Orders.RegisterTools()...)</code></pre>
+      </li>
+    </ol>
+  </section>
+
+  <!-- 5. Error rules -->
+  <section class="stack">
+    <div class="stack prose">
+      <span class="eyebrow">errors</span>
+      <h2>What the model sees when a tool fails</h2>
+      <p>The same rules as <code>utils.ErrorResponse</code>. The model reads the result as text and may repeat it to the user, so internal details must never get there.</p>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Your tool returns</th><th>The model sees</th><th>Why</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>utils.NewNotFoundError(…)</code>, <code>NewClientError</code>, …</td>
+            <td><code>Error: order ord_123 not found</code></td>
+            <td>A message meant for the caller, so the model can react (ask for another ID, explain).</td>
+          </tr>
+          <tr>
+            <td>Input that fails <code>validate</code> or isn't valid JSON</td>
+            <td><code>Error: invalid arguments for get_order: …</code></td>
+            <td>The model made a mistake and can retry with fixed arguments.</td>
+          </tr>
+          <tr>
+            <td>Any other error (SQL, network) or a panic</td>
+            <td><code>Error: the tool failed with an internal error (error id …)</code></td>
+            <td>The real error is logged with that ID and the request ID, like a 500 response.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 6. Calling the agent -->
+  <section class="stack">
+    <div class="stack prose">
+      <span class="eyebrow">the other end</span>
+      <h2>Running the agent from a use case</h2>
+      <p>A use case calls <code>Run</code>; the HTTP handler streams the tokens as SSE. Add the route to <code>models.RequestTimeoutSkipPaths</code>, or <code>REQUEST_TIMEOUT</code> cuts long answers off.</p>
+    </div>
+<pre><code><span class="c">// applications/usecases/chat.go</span>
+type ChatUsecase struct {
+	supportAgent *agents.Agent
+}
+
+func (u *ChatUsecase) Chat(ctx context.Context, message string, history []llms.MessageContent,
+	onToken func(ctx context.Context, chunk string) error) (*agents.Result, error) {
+	return u.supportAgent.Run(ctx, message, agents.WithHistory(history), agents.WithOnToken(onToken))
+}
+
+<span class="c">// interfaces/http/api/chat/handler.go</span>
+func (h *ChatHandler) PostChat(c echo.Context) error {
+	ctx := c.Request().Context()
+	<span class="c">// bind + validate models.ChatRequest as usual …</span>
+	_, err := h.chatUsecase.Chat(ctx, req.Message, history, func(ctx context.Context, chunk string) error {
+		return utils.SuccessResponseSSEvent(c, utils.SuccessResponseSSEventConfig{
+			Event: "token", Data: map[string]string{"token": chunk},
+		})
+	})
+	if err != nil {
+		return utils.ErrorResponseSSEvent(c, err)
+	}
+	return utils.SuccessResponseSSEvent(c, utils.SuccessResponseSSEventConfig{Event: "complete", Data: "[DONE]"})
+}</code></pre>
+    <p class="note">Save <code>Result.Messages</code> after each run and pass it back with <code>agents.WithHistory</code> to continue the conversation. With Claude, keep one conversation's tool loop on one instance: the adapter keeps Claude's reasoning between tool calls in memory.</p>
+  </section>
+
+</main>
+</body>
+</html>

@@ -11,7 +11,7 @@ import (
 
 // NewGeminiLLM creates a new Google Gemini-backed LLM client using the provided config.
 func NewGeminiLLM(cfg models.LLMConfig) (llms.Model, error) {
-	if cfg.GeminiAPIKey == "" {
+	if cfg.APIKey == "" {
 		return nil, fmt.Errorf("gemini API key is required")
 	}
 	if cfg.Model == "" {
@@ -20,7 +20,7 @@ func NewGeminiLLM(cfg models.LLMConfig) (llms.Model, error) {
 
 	llm, err := googleai.New(
 		context.Background(),
-		googleai.WithAPIKey(cfg.GeminiAPIKey),
+		googleai.WithAPIKey(cfg.APIKey),
 		googleai.WithDefaultModel(cfg.Model),
 	)
 	if err != nil {
