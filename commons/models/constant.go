@@ -79,9 +79,14 @@ const (
 )
 
 const (
-	// LLMAssistantTurnCacheSize is how many Claude assistant turns with tool calls are kept in memory, so their
-	// thinking blocks can be sent back unchanged on the next request of a tool-use loop
+	// LLMAssistantTurnCacheSize is how many assistant turns with tool calls are kept in memory, so what langchaingo
+	// messages can't carry (Claude's thinking blocks, Gemini's thought signatures) is sent back unchanged on the next
+	// request of a tool-use loop
 	LLMAssistantTurnCacheSize = 1000
+
+	// GeminiSkipThoughtSignature tells Gemini to skip signature validation for a tool call the adapter has no
+	// signature for. Google documents it as a last resort: it lowers the model's quality for that turn
+	GeminiSkipThoughtSignature = "skip_thought_signature_validator"
 
 	// LLMDefaultMaxTokens / LLMDefaultStreamingMaxTokens are Claude's output limits when the caller sets none.
 	// Generous, so answers are not cut off mid-thought; streaming allows more since it has no HTTP timeout risk

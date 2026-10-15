@@ -6,11 +6,12 @@ import (
 	"go-serviceboilerplate/commons/models"
 
 	"github.com/tmc/langchaingo/llms"
-	"github.com/tmc/langchaingo/llms/googleai"
+	"google.golang.org/genai"
 )
 
-// NewGeminiLLM creates a new Google Gemini-backed LLM client using the provided config.
-func NewGeminiLLM(cfg models.LLMConfig) (llms.Model, error) {
+// NewGeminiLLM creates a Gemini-backed llms.Model on Google's Gen AI SDK.
+// httpOptions are extra SDK options, e.g. a BaseURL in tests.
+func NewGeminiLLM(cfg models.LLMConfig, httpOptions ...genai.HTTPOptions) (llms.Model, error) {
 	if cfg.APIKey == "" {
 		return nil, fmt.Errorf("gemini API key is required")
 	}
@@ -18,14 +19,15 @@ func NewGeminiLLM(cfg models.LLMConfig) (llms.Model, error) {
 		return nil, fmt.Errorf("model name is required for gemini provider")
 	}
 
-	llm, err := googleai.New(
-		context.Background(),
-		googleai.WithAPIKey(cfg.APIKey),
-		googleai.WithDefaultModel(cfg.Model),
-	)
+	clientConfig := &genai.ClientConfig{APIKey: cfg.APIKey, Backend: genai.BackendGeminiAPI}
+	if len(httpOptions) > 0 {
+		clientConfig.HTTPOptions = httpOptions[0]
+	}
+
+	client, err := genai.NewClient(context.Background(), clientConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create gemini LLM: %w", err)
 	}
 
-	return llm, nil
+	return &Model{client: client, model: cfg.Model, turns: newModelTurnCache(models.LLMAssistantTurnCacheSize)}, nil
 }

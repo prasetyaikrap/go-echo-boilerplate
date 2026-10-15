@@ -115,7 +115,7 @@ func TestGetLLMEnvConfig(t *testing.T) {
 		wantModel string
 	}{
 		{provider: "anthropic", wantModel: "claude-opus-5-5"},
-		{provider: "ollama", wantModel: "llama3"},
+		{provider: "ollama", wantModel: "llama3.1"},
 		{provider: "openai", wantModel: ""},
 		{provider: "anthropic", model: "claude-sonnet-5-5", wantModel: "claude-sonnet-5-5"},
 	}

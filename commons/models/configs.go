@@ -205,8 +205,8 @@ type LLMConfig struct {
 	// Empty disables LangChain features
 	Provider LLMProvider
 
-	// Model is the model name/identifier, e.g. "llama3", "gemini-2.0-flash", "claude-opus-5-5" (env: <prefix>MODEL,
-	// default "llama3" for ollama and "claude-opus-5-5" for anthropic; required for gemini and openai)
+	// Model is the model name/identifier, e.g. "llama3.1", "gemini-3.1-flash-lite", "claude-opus-5-5" (env: <prefix>MODEL,
+	// default "llama3.1" for ollama and "claude-opus-5-5" for anthropic; required for gemini and openai)
 	Model string
 
 	// OllamaServerURL is required when Provider is LLMProviderOllama.

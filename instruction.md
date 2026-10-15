@@ -14,7 +14,11 @@ This document provides context for AI agents to understand the structure and con
 - **Cache**: Redis (`github.com/redis/go-redis/v9`)
 - **Message broker**: STOMP (`github.com/go-stomp/stomp/v3`) — ActiveMQ, RabbitMQ STOMP plugin, Artemis
 - **Object storage**: any S3-compatible storage — AWS S3, Cloudflare R2, MinIO (`aws-sdk-go-v2/service/s3`)
-- **LLM**: LangChainGo (`github.com/tmc/langchaingo`) with Ollama, Gemini, OpenAI, or Claude (official `github.com/anthropics/anthropic-sdk-go` behind the `llms.Model` interface)
+- **LLM**: LangChainGo's `llms.Model` interface for every provider, all with native tool calling:
+  - OpenAI: langchaingo's client
+  - Claude: official `github.com/anthropics/anthropic-sdk-go` (keeps thinking blocks across tool calls)
+  - Gemini: official `google.golang.org/genai` (keeps Gemini 3 thought signatures across tool calls; langchaingo's googleai client drops them, which fails the second call of a tool loop with a 400)
+  - Ollama: its `/api/chat` HTTP API (langchaingo's Ollama client never sends tools). The model must support tools, e.g. `llama3.1`, `qwen2.5`
 - **Auth**: JWT (golang-jwt/jwt v5) + bcrypt password hashing
 - **Logging**: `log/slog` JSON logger
 
@@ -506,7 +510,7 @@ See `.env_example` for examples. Durations are integers in the unit shown. Empty
 | Key | Required | Description |
 |---|---|---|
 | `LLM_PROVIDER` | No | `ollama`, `gemini`, `openai`, or `anthropic`; empty disables LangChain |
-| `LLM_MODEL` | For `gemini` / `openai` | Model name; default `llama3` (ollama), `claude-opus-5-5` (anthropic) |
+| `LLM_MODEL` | For `gemini` / `openai` | Model name; default `llama3.1` (ollama), `claude-opus-5-5` (anthropic) |
 | `LLM_OLLAMA_SERVER_URL` | When provider is `ollama` | e.g. `http://localhost:11434` |
 | `LLM_API_KEY` | For `gemini`, `openai`, `anthropic` | API key of the selected provider |
 | `LLM_CONTEXT_WINDOW_SIZE` | No | Recent messages kept in context; default 20 |

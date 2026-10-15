@@ -18,15 +18,15 @@ type pagingInput struct {
 
 type searchOrdersInput struct {
 	pagingInput
-	Status    string            `json:"status" validate:"required,oneof=paid pending cancelled" description:"Order status"`
-	Customer  *string           `json:"customer,omitempty" description:"Customer email"`
-	Tags      []string          `json:"tags"`
-	Address   addressInput      `json:"address"`
-	Since     time.Time         `json:"since"`
-	Amount    float64           `json:"amount"`
-	Urgent    bool              `json:"urgent"`
-	Metadata  map[string]string `json:"metadata"`
-	Internal  string            `json:"-"`
+	Status     string            `json:"status" validate:"required,oneof=paid pending cancelled" description:"Order status"`
+	Customer   *string           `json:"customer,omitempty" description:"Customer email"`
+	Tags       []string          `json:"tags"`
+	Address    addressInput      `json:"address"`
+	Since      time.Time         `json:"since"`
+	Amount     float64           `json:"amount"`
+	Urgent     bool              `json:"urgent"`
+	Metadata   map[string]string `json:"metadata"`
+	Internal   string            `json:"-"`
 	unexported string
 }
 

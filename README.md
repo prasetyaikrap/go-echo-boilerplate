@@ -13,7 +13,7 @@ A production-ready starter template for building backend REST API services using
 | Cache | Redis via [go-redis v9](https://github.com/redis/go-redis) |
 | Message Broker | STOMP (ActiveMQ, RabbitMQ, Artemis) via [go-stomp v3](https://github.com/go-stomp/stomp) |
 | Object Storage | Any S3-compatible storage (AWS S3, Cloudflare R2, MinIO) via [aws-sdk-go-v2](https://github.com/aws/aws-sdk-go-v2) |
-| LLM | [LangChainGo](https://github.com/tmc/langchaingo) — Ollama, Gemini, OpenAI, or Claude (via the official [Anthropic Go SDK](https://github.com/anthropics/anthropic-sdk-go)) |
+| LLM | [LangChainGo](https://github.com/tmc/langchaingo) `llms.Model` — OpenAI (langchaingo's client), Claude (official [Anthropic Go SDK](https://github.com/anthropics/anthropic-sdk-go)), Gemini (official [Gen AI Go SDK](https://github.com/googleapis/go-genai)) and Ollama (its `/api/chat` HTTP API), all with native tool calling |
 | JWT | [golang-jwt/jwt v5](https://github.com/golang-jwt/jwt) |
 | Validation | [go-playground/validator v10](https://github.com/go-playground/validator) |
 | Logging | `log/slog` (JSON) |
@@ -187,7 +187,7 @@ S3_PUBLIC_HOST=https://cdn.example.com
 
 # LLM (leave LLM_PROVIDER empty to disable)
 LLM_PROVIDER=anthropic             # ollama | gemini | openai | anthropic
-LLM_MODEL=                         # empty: llama3 (ollama) / claude-opus-5-5 (anthropic)
+LLM_MODEL=                         # empty: llama3.1 (ollama) / claude-opus-5-5 (anthropic)
 LLM_API_KEY=...                    # gemini, openai, anthropic
 LLM_EFFORT=high                    # anthropic: low | medium | high | xhigh | max
 ```

@@ -3,12 +3,13 @@ package ollama
 import (
 	"fmt"
 	"go-serviceboilerplate/commons/models"
+	"net/http"
+	"strings"
 
 	"github.com/tmc/langchaingo/llms"
-	"github.com/tmc/langchaingo/llms/ollama"
 )
 
-// NewOllamaLLM creates a new Ollama-backed LLM client using the provided config.
+// NewOllamaLLM creates an Ollama-backed llms.Model on Ollama's /api/chat.
 func NewOllamaLLM(cfg models.LLMConfig) (llms.Model, error) {
 	if cfg.OllamaServerURL == "" {
 		return nil, fmt.Errorf("ollama server URL is required")
@@ -17,13 +18,6 @@ func NewOllamaLLM(cfg models.LLMConfig) (llms.Model, error) {
 		return nil, fmt.Errorf("model name is required for ollama provider")
 	}
 
-	llm, err := ollama.New(
-		ollama.WithModel(cfg.Model),
-		ollama.WithServerURL(cfg.OllamaServerURL),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create ollama LLM: %w", err)
-	}
-
-	return llm, nil
+	// No client timeout: requests end with their context, and streams can run long
+	return &Model{serverURL: strings.TrimRight(cfg.OllamaServerURL, "/"), model: cfg.Model, httpClient: &http.Client{}}, nil
 }

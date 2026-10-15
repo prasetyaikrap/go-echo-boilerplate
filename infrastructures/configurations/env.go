@@ -149,14 +149,14 @@ func GetLocalStorageEnvConfig(name string, prefix string) models.LocalStorageCon
 
 // GetLLMEnvConfig loads an LLM config from env vars sharing the same prefix,
 // e.g. prefix "FAST_LLM_" reads FAST_LLM_PROVIDER, FAST_LLM_MODEL, etc.
-// <prefix>MODEL defaults per provider: "llama3" for ollama and "claude-opus-5-5" for anthropic; gemini and openai require it
+// <prefix>MODEL defaults per provider: "llama3.1" for ollama (llama3 has no tool calling) and "claude-opus-5-5" for anthropic; gemini and openai require it
 func GetLLMEnvConfig(name string, prefix string) models.LLMConfig {
 	provider := models.LLMProvider(GetEnv(prefix + "PROVIDER", false, ""))
 
 	defaultModel := ""
 	switch provider {
 	case models.LLMProviderOllama:
-		defaultModel = "llama3"
+		defaultModel = "llama3.1"
 	case models.LLMProviderAnthropic:
 		defaultModel = "claude-opus-5-5"
 	}
